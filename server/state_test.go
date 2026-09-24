@@ -1,0 +1,144 @@
+package main
+
+import (
+	"testing"
+	"time"
+)
+
+var base = time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC)
+
+func at(d time.Duration) int64 { return base.Add(d).Unix() }
+
+func TestMergeKeepsNotifiedForTheSameVenture(t *testing.T) {
+	s := NewState()
+	s.merge("Y'shtola@Phoenix", []Retainer{{Name: "Sultana", Venture: "Quick Exploration", DoneAt: at(time.Hour)}}, base)
+	s.Characters["Y'shtola@Phoenix"].Retainers[0].Notified = true
+
+	// Same completion time: the plugin is just re-syncing what we already sent.
+	s.merge("Y'shtola@Phoenix", []Retainer{{Name: "Sultana", Venture: "Quick Exploration", DoneAt: at(time.Hour)}}, base)
+	if !s.Characters["Y'shtola@Phoenix"].Retainers[0].Notified {
+		t.Fatal("a re-sync of the same venture re-armed a notification that was already sent")
+	}
+
+	// New completion time: the venture was reassigned and is due again.
+	s.merge("Y'shtola@Phoenix", []Retainer{{Name: "Sultana", Venture: "Hunting Exploration", DoneAt: at(3 * time.Hour)}}, base)
+	if s.Characters["Y'shtola@Phoenix"].Retainers[0].Notified {
+		t.Fatal("a reassigned venture stayed marked as notified")
+	}
+}
+
+func TestMergeSuppressesVenturesAlreadyCompleteOnFirstSight(t *testing.T) {
+	s := NewState()
+	s.merge("Y'shtola@Phoenix", []Retainer{
+		{Name: "Sultana", DoneAt: at(-time.Minute)},
+		{Name: "Bubbles", DoneAt: at(time.Hour)},
+	}, base)
+
+	got := s.Characters["Y'shtola@Phoenix"].Retainers
+	if !got[0].Notified {
+		t.Error("a venture that had already finished at sync time would have been pushed; it is on screen at the bell")
+	}
+	if got[1].Notified {
+		t.Error("a pending venture was suppressed")
+	}
+}
+
+func TestMergeDropsRetainersAbsentFromTheSync(t *testing.T) {
+	s := NewState()
+	s.merge("Y'shtola@Phoenix", []Retainer{
+		{Name: "Sultana", DoneAt: at(time.Hour)},
+		{Name: "Bubbles", DoneAt: at(time.Hour)},
+	}, base)
+	s.merge("Y'shtola@Phoenix", []Retainer{{Name: "Sultana", DoneAt: at(time.Hour)}}, base)
+
+	if n := len(s.Characters["Y'shtola@Phoenix"].Retainers); n != 1 {
+		t.Fatalf("a dismissed retainer survived the sync: %d retainers left", n)
+	}
+}
+
+func TestDueCoalescesForward(t *testing.T) {
+	s := NewState()
+	s.merge("Y'shtola@Phoenix", []Retainer{
+		{Name: "Sultana", DoneAt: at(-time.Second)},     // due
+		{Name: "Bubbles", DoneAt: at(30 * time.Second)}, // inside the window
+		{Name: "Coco", DoneAt: at(10 * time.Minute)},    // well outside it
+	}, base.Add(-time.Hour))
+
+	got := s.due(base, 0, time.Minute, 6*time.Hour)
+	if len(got) != 2 {
+		t.Fatalf("want the two completions inside the coalescing window, got %d: %+v", len(got), got)
+	}
+
+	// Everything sent is marked, so a second pass in the same window is silent.
+	if again := s.due(base, 0, time.Minute, 6*time.Hour); len(again) != 0 {
+		t.Fatalf("the same completions came due twice: %+v", again)
+	}
+}
+
+func TestDueHonoursLeadTime(t *testing.T) {
+	s := NewState()
+	s.merge("Y'shtola@Phoenix", []Retainer{{Name: "Sultana", DoneAt: at(4 * time.Minute)}}, base.Add(-time.Hour))
+
+	if got := s.due(base, 0, 0, 6*time.Hour); len(got) != 0 {
+		t.Fatalf("notified four minutes early with no lead time configured: %+v", got)
+	}
+	if got := s.due(base, 5*time.Minute, 0, 6*time.Hour); len(got) != 1 {
+		t.Fatalf("a five minute lead did not reach a venture due in four: %+v", got)
+	}
+}
+
+func TestDueDropsCompletionsMissedByMoreThanStale(t *testing.T) {
+	s := NewState()
+	// Known while pending, so merge does not suppress it; the server was then
+	// down for a day.
+	s.merge("Y'shtola@Phoenix", []Retainer{{Name: "Sultana", DoneAt: at(-24 * time.Hour)}}, base.Add(-48*time.Hour))
+
+	if got := s.due(base, 0, 0, 6*time.Hour); len(got) != 0 {
+		t.Fatalf("sent a notification for a venture that finished a day ago: %+v", got)
+	}
+	if !s.Characters["Y'shtola@Phoenix"].Retainers[0].Notified {
+		t.Error("the stale completion was not put to rest and will be reconsidered on every tick")
+	}
+}
+
+func TestNextAtIsTheEarliestPendingCompletion(t *testing.T) {
+	s := NewState()
+	s.merge("Y'shtola@Phoenix", []Retainer{
+		{Name: "Coco", DoneAt: at(3 * time.Hour)},
+		{Name: "Sultana", DoneAt: at(time.Hour)},
+		{Name: "Idle"}, // no venture running
+	}, base)
+
+	got, ok := s.nextAt(10 * time.Minute)
+	if !ok {
+		t.Fatal("no wake-up scheduled although ventures are pending")
+	}
+	if want := time.Unix(at(50*time.Minute), 0); !got.Equal(want) {
+		t.Fatalf("wake-up at %s, want %s", got, want)
+	}
+
+	s.Characters["Y'shtola@Phoenix"].Retainers[0].Notified = true
+	s.Characters["Y'shtola@Phoenix"].Retainers[1].Notified = true
+	if _, ok := s.nextAt(0); ok {
+		t.Error("scheduled a wake-up with nothing left to say")
+	}
+}
+
+func TestDueSendsNothingEarlyOnItsOwn(t *testing.T) {
+	s := NewState()
+	s.merge("Y'shtola@Phoenix", []Retainer{{Name: "Sultana", DoneAt: at(30 * time.Second)}}, base.Add(-time.Hour))
+
+	// Inside the coalescing window, but there is nothing due for it to ride
+	// along with — announcing it now would just be thirty seconds early.
+	if got := s.due(base, 0, time.Minute, 6*time.Hour); len(got) != 0 {
+		t.Fatalf("a lone venture was announced %v early: %+v", 30*time.Second, got)
+	}
+	if s.Characters["Y'shtola@Phoenix"].Retainers[0].Notified {
+		t.Fatal("the venture was marked notified without a notification")
+	}
+
+	// Once it is actually due, it goes out.
+	if got := s.due(base.Add(30*time.Second), 0, time.Minute, 6*time.Hour); len(got) != 1 {
+		t.Fatalf("want one completion once it is due, got %d", len(got))
+	}
+}

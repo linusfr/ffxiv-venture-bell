@@ -1,0 +1,29 @@
+<Project Sdk="Dalamud.NET.Sdk/15.0.0">
+  <PropertyGroup>
+    <!-- Overridden by CI: dotnet build -p:Version=$(semantic-release output) -->
+    <Version Condition="'$(Version)' == ''">1.0.0</Version>
+    <AssemblyName>VentureBell</AssemblyName>
+    <RootNamespace>VentureBell</RootNamespace>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <!-- Reading RetainerManager is pointer work against FFXIVClientStructs. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <!-- DalamudPackager manifest fields -->
+  <PropertyGroup>
+    <Author>linusfr</Author>
+    <Name>Venture Bell</Name>
+    <Punchline>Pushes a notification when your retainers get back, even with the game closed.</Punchline>
+    <Description>Sends your retainers' venture completion times to a small self-hosted server, which holds the countdown and pushes a notification when they finish — including when the game is shut down. Reads the timers the game already has; it never assigns, collects or interacts with a retainer. Nothing is sent anywhere until you configure your own server address.</Description>
+    <ApplicableVersion>any</ApplicableVersion>
+    <DalamudApiLevel>15</DalamudApiLevel>
+    <Tags>retainer;venture;notification;utility</Tags>
+    <RepoUrl>https://github.com/linusfr/ffxiv-venture-bell</RepoUrl>
+    <IconUrl>https://raw.githubusercontent.com/linusfr/ffxiv-venture-bell/main/images/icon.png</IconUrl>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="..\images\icon.png" Link="images\icon.png"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

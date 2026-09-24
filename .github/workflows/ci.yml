@@ -1,0 +1,243 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Gate 1: the code is clean, and the next version number ─────────────────
+  # The version is computed with --dry so nothing is tagged yet. Tagging before
+  # the build is what leaves orphan releases behind when a build breaks.
+  checks:
+    name: checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.semrel.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+          cache-dependency-path: server/go.mod
+
+      # The pre-commit hooks run locally (`just hooks`); CI runs the gates that
+      # matter for the build directly, which keeps this job free of a toolchain
+      # bootstrap it would otherwise need for one hook.
+      - name: Formatting
+        working-directory: server
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "needs gofmt:"; echo "$unformatted"; exit 1
+          fi
+
+      - name: Vet
+        working-directory: server
+        run: go vet ./...
+
+      # -race because the scheduler and the HTTP handlers share the state under
+      # a mutex, and that is exactly the kind of thing that breaks quietly.
+      - name: Test
+        working-directory: server
+        run: go test -race ./...
+
+      - name: Next version (dry run — tags nothing)
+        id: semrel
+        uses: go-semantic-release/action@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          # Tags are bare: 1.2.3, not v1.2.3. The "v" is hardcoded in the GitHub
+          # provider and strip_v_tag_prefix is the documented way out.
+          custom-arguments: '--provider-opt strip_v_tag_prefix=true'
+          dry: true
+
+  # ── Gate 2: both halves have to actually build ─────────────────────────────
+  server:
+    name: server
+    needs: checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+          cache-dependency-path: server/go.mod
+
+      - name: Build
+        working-directory: server
+        run: go build -trimpath ./...
+
+      - name: Build the container image
+        run: docker build -t ffxiv-venture-bell:ci server
+
+  chart:
+    name: chart
+    needs: checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: azure/setup-helm@v4
+
+      - name: Lint
+        run: helm lint chart --set secret.bellToken=lint
+
+      # helm lint only checks that the templates render. kubeconform checks the
+      # result is a manifest the API server would actually accept.
+      - name: Validate the rendered manifests
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz \
+            | tar xz kubeconform
+          helm template vb chart \
+            --set secret.bellToken=x \
+            --set ingress.enabled=true \
+            --set ingress.host=bell.example.com \
+            | ./kubeconform -strict -summary -
+
+      - name: Package at the version being cut
+        env:
+          VERSION: ${{ needs.checks.outputs.version || '0.0.0' }}
+        run: helm package chart --version "$VERSION" --app-version "$VERSION" -d dist
+
+  plugin:
+    name: plugin
+    needs: checks
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Download Dalamud (staging)
+        shell: pwsh
+        run: |
+          Invoke-WebRequest "https://github.com/goatcorp/dalamud-distrib/raw/main/stg/latest.zip" -OutFile dalamud.zip
+          Expand-Archive dalamud.zip -DestinationPath "$env:APPDATA\XIVLauncher\addon\Hooks\dev" -Force
+
+      - name: Formatting
+        shell: pwsh
+        run: |
+          dotnet format style plugin/VentureBell.csproj --verify-no-changes
+          dotnet format analyzers plugin/VentureBell.csproj --verify-no-changes
+
+      # Pull requests and release-less pushes build at a throwaway version; only
+      # a push that semantic-release would actually cut gets the real one.
+      - name: Build
+        shell: pwsh
+        run: |
+          $ver = "${{ needs.checks.outputs.version }}"
+          if (-not $ver) { $ver = "0.0.0" }
+          dotnet build plugin/VentureBell.csproj --configuration Release -p:Version=$ver
+
+      - name: Collect DalamudPackager output
+        shell: pwsh
+        run: |
+          $zip = "plugin/bin/Release/VentureBell/latest.zip"
+          if (-not (Test-Path $zip)) { Write-Error "DalamudPackager zip not found at $zip"; exit 1 }
+          Copy-Item $zip VentureBell.zip
+
+      - name: Upload for the release job
+        uses: actions/upload-artifact@v7
+        with:
+          name: plugin-zip
+          path: VentureBell.zip
+          retention-days: 1
+
+  # ── Only now is anything tagged, released or published ─────────────────────
+  release:
+    name: release
+    needs: [checks, server, chart, plugin]
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      github.event_name != 'pull_request' &&
+      needs.checks.outputs.version != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: plugin-zip
+
+      - name: Tag and create the release
+        uses: go-semantic-release/action@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          custom-arguments: '--provider-opt strip_v_tag_prefix=true'
+          changelog-file: CHANGELOG.md
+
+      - name: Attach the plugin
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ needs.checks.outputs.version }}
+          files: VentureBell.zip
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # The two halves ship from one tag, so the image version and the plugin
+      # version are the same number and there is no compatibility matrix.
+      - name: Publish the server image
+        env:
+          VERSION: ${{ needs.checks.outputs.version }}
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          image=ghcr.io/${{ github.repository_owner }}/ffxiv-venture-bell
+          docker build -t "$image:$VERSION" -t "$image:latest" server
+          docker push "$image:$VERSION"
+          docker push "$image:latest"
+
+      - uses: azure/setup-helm@v4
+
+      # Packaged from the tag, not from Chart.yaml: version and appVersion are
+      # both the number just cut, so `helm install` of chart 1.4.0 pulls image
+      # 1.4.0 without anyone setting image.tag.
+      - name: Publish the chart
+        env:
+          VERSION: ${{ needs.checks.outputs.version }}
+        run: |
+          helm registry login ghcr.io -u ${{ github.actor }} --password "${{ secrets.GITHUB_TOKEN }}"
+          helm package chart --version "$VERSION" --app-version "$VERSION" -d dist
+          helm push "dist/venturebell-$VERSION.tgz" oci://ghcr.io/${{ github.repository_owner }}/charts
+
+      - name: Point pluginmaster at the new release
+        env:
+          VERSION: ${{ needs.checks.outputs.version }}
+        run: |
+          python3 - <<'PY'
+          import json, os, time
+          version = os.environ["VERSION"]
+          entries = json.load(open("pluginmaster.json"))
+          entries[0]["AssemblyVersion"] = version + ".0"
+          entries[0]["LastUpdated"] = int(time.time())
+          json.dump(entries, open("pluginmaster.json", "w"), indent=2)
+          PY
+
+      - name: Commit the manifest
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pluginmaster.json
+          if [ -f CHANGELOG.md ]; then git add CHANGELOG.md; fi
+          git diff --cached --quiet || git commit -m "chore: pluginmaster ${VERSION} [skip ci]"
+          git push
+        env:
+          VERSION: ${{ needs.checks.outputs.version }}

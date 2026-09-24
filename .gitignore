@@ -1,0 +1,29 @@
+# Build output
+/server/venturebell
+/server/server
+/dist/
+plugin/bin/
+plugin/obj/
+VentureBell.zip
+pack/
+
+# Dalamud auto-generated assembly info
+*.AssemblyInfo.cs
+*.AssemblyAttributes.cs
+
+# Runtime state — retainer timers, not source
+state.json
+*.env
+!*.enc.env
+
+# AI context files
+CLAUDE.md
+AGENTS.md
+.ai-session-state.md
+
+# IDE / OS
+.vs/
+.vscode/
+*.user
+.DS_Store
+Thumbs.db

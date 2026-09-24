@@ -1,0 +1,77 @@
+image:
+  repository: ghcr.io/linusfr/ffxiv-venture-bell
+  # Empty means the chart's appVersion, which the release workflow sets to the
+  # same tag as the image. Pin it here only to run a different version than the
+  # chart was cut for.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# BELL_TOKEN, and the Pushover credentials if you use them.
+#
+# existingSecret is the way in: create the secret yourself, out of band, and
+# name it here. Keys are read as-is, so it must carry BELL_TOKEN and, for
+# Pushover, PUSHOVER_TOKEN and PUSHOVER_USER.
+existingSecret: ""
+
+# The fallback for people who are not running a secret manager: values landing
+# in a Secret the chart creates. It ends up in your values file and in Helm's
+# release history, so prefer existingSecret.
+secret:
+  bellToken: ""
+  pushoverToken: ""
+  pushoverUser: ""
+
+# Everything that is not a credential.
+config:
+  # Notify this long before a venture completes, e.g. 5m.
+  lead: ""
+  # Completions within this of each other share one notification.
+  coalesce: 1m
+  # A completion missed by more than this is dropped rather than sent late.
+  stale: 6h
+  # Also POST the notification as JSON here — ntfy, gotify, Home Assistant.
+  webhookUrl: ""
+  pushover:
+    priority: ""
+    device: ""
+    sound: ""
+  debug: false
+
+# The state file is the countdown. Without a volume it lives in the pod and a
+# restart loses every pending venture until the plugin syncs again.
+persistence:
+  enabled: true
+  size: 64Mi
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  # Use an existing claim instead of the one this chart creates.
+  existingClaim: ""
+
+service:
+  type: ClusterIP
+  port: 8770
+
+# The plugin has to be able to reach the service. On a homelab cluster that is
+# usually an ingress or a LoadBalancer service; nothing here assumes either.
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: ""
+  tls: []
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 16Mi
+  limits:
+    memory: 64Mi
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

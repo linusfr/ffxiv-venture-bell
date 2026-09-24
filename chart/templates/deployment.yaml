@@ -1,0 +1,128 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "venturebell.fullname" . }}
+  labels:
+    {{- include "venturebell.labels" . | nindent 4 }}
+spec:
+  # One replica, always. The countdown is a file, and a second pod would either
+  # fight over the same ReadWriteOnce volume or hold its own copy and notify you
+  # twice for every venture.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "venturebell.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        # A changed token or Pushover key has to reach the process, and nothing
+        # about a Secret edit restarts a pod on its own.
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "venturebell.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        # The image ships /data owned by 65532; this makes a mounted volume
+        # match, so the state file can be written.
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: venturebell
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          ports:
+            - name: http
+              containerPort: 8770
+              protocol: TCP
+          envFrom:
+            - secretRef:
+                name: {{ include "venturebell.secretName" . }}
+          env:
+            - name: BELL_ADDR
+              value: "0.0.0.0:8770"
+            - name: BELL_STATE
+              value: /data/state.json
+            {{- with .Values.config.lead }}
+            - name: BELL_LEAD
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.config.coalesce }}
+            - name: BELL_COALESCE
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.config.stale }}
+            - name: BELL_STALE
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.config.webhookUrl }}
+            - name: BELL_WEBHOOK_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.config.pushover.priority }}
+            - name: PUSHOVER_PRIORITY
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.config.pushover.device }}
+            - name: PUSHOVER_DEVICE
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.config.pushover.sound }}
+            - name: PUSHOVER_SOUND
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if .Values.config.debug }}
+            - name: BELL_DEBUG
+              value: "1"
+            {{- end }}
+          # /healthz is unauthenticated precisely so probes do not need the token.
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: state
+              mountPath: /data
+      volumes:
+        - name: state
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "venturebell.pvcName" . }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

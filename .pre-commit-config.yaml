@@ -1,0 +1,37 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: check-merge-conflict
+      - id: check-yaml
+        args:
+          - --unsafe
+        # Helm templates are not YAML until Helm has rendered them; `just
+        # chart-check` is what validates those.
+        exclude: ^chart/templates/
+      - id: check-json
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        files: ^(?!.*\.md$).*
+
+  - repo: https://github.com/python-jsonschema/check-jsonschema
+    rev: 0.38.0
+    hooks:
+      - id: check-github-workflows
+        args: ["--verbose"]
+
+  # Conventional commits are load-bearing here: go-semantic-release derives
+  # every version number from them.
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v4.18.0
+    hooks:
+      - id: commitizen
+        stages: [commit-msg]
+
+  # The token lives in the environment, never in the repo.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks

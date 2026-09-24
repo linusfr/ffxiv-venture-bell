@@ -1,0 +1,24 @@
+[
+  {
+    "Author": "linusfr",
+    "Name": "Venture Bell",
+    "InternalName": "VentureBell",
+    "Punchline": "Pushes a notification when your retainers get back, even with the game closed.",
+    "Description": "Sends your retainers' venture completion times to a small self-hosted server, which holds the countdown and pushes a notification when they finish — including when the game is shut down. Reads the timers the game already has; it never assigns, collects or interacts with a retainer. Nothing is sent anywhere until you configure your own server address.",
+    "ApplicableVersion": "any",
+    "DalamudApiLevel": 15,
+    "Tags": [
+      "retainer",
+      "venture",
+      "notification",
+      "utility"
+    ],
+    "AssemblyVersion": "1.0.0.0",
+    "RepoUrl": "https://github.com/linusfr/ffxiv-venture-bell",
+    "DownloadLinkInstall": "https://github.com/linusfr/ffxiv-venture-bell/releases/latest/download/VentureBell.zip",
+    "DownloadLinkUpdate": "https://github.com/linusfr/ffxiv-venture-bell/releases/latest/download/VentureBell.zip",
+    "DownloadLinkTesting": "https://github.com/linusfr/ffxiv-venture-bell/releases/latest/download/VentureBell.zip",
+    "LastUpdated": 0,
+    "IconUrl": "https://raw.githubusercontent.com/linusfr/ffxiv-venture-bell/main/images/icon.png"
+  }
+]

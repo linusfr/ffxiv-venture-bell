@@ -1,0 +1,15 @@
+apiVersion: v2
+name: venturebell
+description: Holds the countdown for FFXIV retainer ventures and pushes a notification when they finish.
+type: application
+home: https://github.com/linusfr/ffxiv-venture-bell
+sources:
+  - https://github.com/linusfr/ffxiv-venture-bell
+maintainers:
+  - name: linusfr
+icon: https://raw.githubusercontent.com/linusfr/ffxiv-venture-bell/main/images/icon.png
+# Both are placeholders. The release workflow packages the chart with
+# --version/--app-version set to the tag being cut, so the chart, the image and
+# the plugin all carry the same number.
+version: 0.0.0
+appVersion: "0.0.0"
