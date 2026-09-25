@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -140,5 +141,60 @@ func TestDueSendsNothingEarlyOnItsOwn(t *testing.T) {
 	// Once it is actually due, it goes out.
 	if got := s.due(base.Add(30*time.Second), 0, time.Minute, 6*time.Hour); len(got) != 1 {
 		t.Fatalf("want one completion once it is due, got %d", len(got))
+	}
+}
+
+func TestMergeReportsNewlyStartedVentures(t *testing.T) {
+	s := NewState()
+
+	// First sight of a character says nothing: installing the plugin with
+	// ventures already running is not the same as assigning them.
+	started := s.merge("Y'shtola@Phoenix", []Retainer{
+		{Name: "Sultana", Venture: "Quick Exploration", DoneAt: at(time.Hour)},
+		{Name: "Bubbles"},
+	}, base)
+	if len(started) != 0 {
+		t.Fatalf("the first sync announced %d ventures as newly started: %+v", len(started), started)
+	}
+
+	// An idle retainer picking up a venture, and one that was already running
+	// left alone.
+	started = s.merge("Y'shtola@Phoenix", []Retainer{
+		{Name: "Sultana", Venture: "Quick Exploration", DoneAt: at(time.Hour)},
+		{Name: "Bubbles", Venture: "Field Exploration", DoneAt: at(2 * time.Hour)},
+	}, base)
+	if len(started) != 1 || started[0].Retainer != "Bubbles" {
+		t.Fatalf("want only Bubbles reported as started, got %+v", started)
+	}
+
+	// A re-sync of the same picture is not a new venture.
+	if again := s.merge("Y'shtola@Phoenix", []Retainer{
+		{Name: "Sultana", Venture: "Quick Exploration", DoneAt: at(time.Hour)},
+		{Name: "Bubbles", Venture: "Field Exploration", DoneAt: at(2 * time.Hour)},
+	}, base); len(again) != 0 {
+		t.Fatalf("an unchanged re-sync reported %+v", again)
+	}
+
+	// A completion that has already passed is not a start either.
+	if done := s.merge("Y'shtola@Phoenix", []Retainer{
+		{Name: "Sultana", Venture: "Quick Exploration", DoneAt: at(-time.Minute)},
+	}, base); len(done) != 0 {
+		t.Fatalf("a venture that had already finished was reported as started: %+v", done)
+	}
+}
+
+func TestComposeStartedNamesWhenTheyAreBack(t *testing.T) {
+	title, message := composeStarted([]Completion{
+		{Character: "Y'shtola@Phoenix", Retainer: "Bubbles", Venture: "Field Exploration", DoneAt: at(2 * time.Hour)},
+		{Character: "Y'shtola@Phoenix", Retainer: "Sultana", Venture: "Quick Exploration", DoneAt: at(time.Hour)},
+	})
+	if title != "2 ventures started" {
+		t.Errorf("title = %q", title)
+	}
+	// Soonest first, and each line says when it is back — the one thing the
+	// bell in front of you does not put on your phone.
+	want := time.Unix(at(time.Hour), 0).Format("15:04")
+	if !strings.HasPrefix(message, "Sultana — Quick Exploration · back "+want) {
+		t.Errorf("message = %q, want it to lead with Sultana back at %s", message, want)
 	}
 }

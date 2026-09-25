@@ -33,8 +33,12 @@ config:
   coalesce: 1m
   # A completion missed by more than this is dropped rather than sent late.
   stale: 6h
+  # Also announce ventures as they are assigned, not just when they finish.
+  notifyStart: false
   # Also POST the notification as JSON here — ntfy, gotify, Home Assistant.
   webhookUrl: ""
+  # Needed for readable times in start notifications; UTC otherwise.
+  timezone: ""
   pushover:
     priority: ""
     device: ""

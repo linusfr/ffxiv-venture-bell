@@ -72,6 +72,14 @@ spec:
             - name: BELL_STALE
               value: {{ . | quote }}
             {{- end }}
+            {{- if .Values.config.notifyStart }}
+            - name: BELL_NOTIFY_START
+              value: "1"
+            {{- end }}
+            {{- with .Values.config.timezone }}
+            - name: TZ
+              value: {{ . | quote }}
+            {{- end }}
             {{- with .Values.config.webhookUrl }}
             - name: BELL_WEBHOOK_URL
               value: {{ . | quote }}

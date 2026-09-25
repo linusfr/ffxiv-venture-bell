@@ -21,6 +21,9 @@ type Bell struct {
 	state *State
 
 	wake chan struct{}
+	// Ventures that have just been assigned, handed to Run so the plugin's
+	// request is not left waiting on Pushover.
+	started chan []Completion
 }
 
 func NewBell(cfg Config, store *Store, state *State, send Notifier, log *slog.Logger) *Bell {
@@ -33,16 +36,27 @@ func NewBell(cfg Config, store *Store, state *State, send Notifier, log *slog.Lo
 		now:   time.Now,
 		// Buffered: a sync that lands while the scheduler is mid-tick should
 		// leave a note, not block on it.
-		wake: make(chan struct{}, 1),
+		wake:    make(chan struct{}, 1),
+		started: make(chan []Completion, 8),
 	}
 }
 
 // Sync records one character's retainers and re-arms the timer.
 func (b *Bell) Sync(req SyncRequest) error {
 	b.mu.Lock()
-	b.state.merge(req.Character, req.Retainers, b.now())
+	started := b.state.merge(req.Character, req.Retainers, b.now())
 	err := b.store.Save(b.state)
 	b.mu.Unlock()
+
+	if b.cfg.NotifyStart && len(started) > 0 {
+		select {
+		case b.started <- started:
+		default:
+			// Eight batches already queued means notifications are not going
+			// out at all; dropping one is better than growing a backlog.
+			b.log.Warn("dropped a start notification", "count", len(started))
+		}
+	}
 
 	// Re-arm even if the save failed: the merge already happened in memory, and
 	// a disk problem should cost persistence across a restart, not the
@@ -95,6 +109,12 @@ func (b *Bell) Run(ctx context.Context) {
 			}
 			return
 		case <-b.wake:
+		case items := <-b.started:
+			title, message := composeStarted(items)
+			for _, it := range items {
+				b.log.Info("venture started", "character", it.Character, "retainer", it.Retainer, "venture", it.Venture)
+			}
+			b.deliver(ctx, Notification{Title: title, Message: message, At: b.now(), Items: items})
 		case <-fire:
 		}
 		if timer != nil {
@@ -137,12 +157,15 @@ func (b *Bell) tick(ctx context.Context) {
 		b.log.Info("venture complete", "character", it.Character, "retainer", it.Retainer, "venture", it.Venture)
 	}
 
-	n := Notification{Title: title, Message: message, At: at, Items: items}
+	b.deliver(ctx, Notification{Title: title, Message: message, At: at, Items: items})
+}
+
+func (b *Bell) deliver(ctx context.Context, n Notification) {
 	if err := b.send.Notify(ctx, n); err != nil {
 		// Deliberately loud: the notification is gone, and the only place that
 		// fact can still surface is the log.
-		b.log.Error("notification not delivered", "err", err, "title", title, "count", len(items))
+		b.log.Error("notification not delivered", "err", err, "title", n.Title, "count", len(n.Items))
 		return
 	}
-	b.log.Info("notified", "via", b.send.Name(), "count", len(items))
+	b.log.Info("notified", "via", b.send.Name(), "title", n.Title, "count", len(n.Items))
 }

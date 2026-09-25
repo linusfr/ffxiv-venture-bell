@@ -67,6 +67,43 @@ func compose(items []Completion) (title, message string) {
 	}
 }
 
+// composeStarted announces ventures as they are sent out. It names the time
+// they are back, which is the one thing the summoning bell in front of you does
+// not put on your phone.
+func composeStarted(items []Completion) (title, message string) {
+	sort.Slice(items, func(i, j int) bool { return items[i].DoneAt < items[j].DoneAt })
+
+	characters := map[string]struct{}{}
+	for _, it := range items {
+		characters[it.Character] = struct{}{}
+	}
+	withCharacter := len(characters) > 1
+
+	lines := make([]string, 0, len(items))
+	for _, it := range items {
+		line := it.Retainer
+		if it.Venture != "" {
+			line += " — " + it.Venture
+		}
+		// Local time, so the container needs a TZ; UTC would be an hour or two
+		// off and look like a bug in the timers.
+		line += " · back " + time.Unix(it.DoneAt, 0).Format("15:04")
+		if withCharacter {
+			line = it.Character + ": " + line
+		}
+		lines = append(lines, line)
+	}
+
+	switch len(items) {
+	case 0:
+		return "", ""
+	case 1:
+		return "Venture started", lines[0]
+	default:
+		return fmt.Sprintf("%d ventures started", len(items)), strings.Join(lines, "\n")
+	}
+}
+
 // ── fan-out ─────────────────────────────────────────────────────────────────
 
 type multiNotifier []Notifier

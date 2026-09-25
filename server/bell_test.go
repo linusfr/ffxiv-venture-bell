@@ -223,3 +223,62 @@ func TestBellStillSchedulesWhenTheStateCannotBeSaved(t *testing.T) {
 		t.Fatalf("a save failure also swallowed the notification: %d sent", n)
 	}
 }
+
+func TestBellAnnouncesStartedVenturesWithoutBlockingTheSync(t *testing.T) {
+	b, sent, _ := testBell(t, Config{Coalesce: time.Minute, Stale: 6 * time.Hour, NotifyStart: true})
+	b.now = func() time.Time { return base }
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go b.Run(ctx)
+
+	// Baseline: the character is unknown, so this one is silent.
+	if err := b.Sync(SyncRequest{Character: "Y'shtola@Phoenix", Retainers: []Retainer{{Name: "Sultana"}}}); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	// Now a venture goes out.
+	if err := b.Sync(SyncRequest{
+		Character: "Y'shtola@Phoenix",
+		Retainers: []Retainer{{Name: "Sultana", Venture: "Quick Exploration", DoneAt: at(time.Hour)}},
+	}); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	deadline := time.After(3 * time.Second)
+	for len(sent.all()) == 0 {
+		select {
+		case <-deadline:
+			t.Fatal("no start notification after a venture was assigned")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+
+	got := sent.all()
+	if len(got) != 1 || got[0].Title != "Venture started" {
+		t.Fatalf("want one start notification, got %+v", got)
+	}
+}
+
+func TestBellStaysQuietAboutStartsUnlessAskedTo(t *testing.T) {
+	b, sent, _ := testBell(t, Config{Coalesce: time.Minute, Stale: 6 * time.Hour})
+	b.now = func() time.Time { return base }
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go b.Run(ctx)
+
+	for range 2 {
+		if err := b.Sync(SyncRequest{
+			Character: "Y'shtola@Phoenix",
+			Retainers: []Retainer{{Name: "Sultana", Venture: "Quick Exploration", DoneAt: at(time.Hour)}},
+		}); err != nil {
+			t.Fatalf("Sync: %v", err)
+		}
+	}
+
+	// Long enough for a notification to have gone out if it were going to.
+	time.Sleep(200 * time.Millisecond)
+	if n := len(sent.all()); n != 0 {
+		t.Fatalf("sent %d start notifications with BELL_NOTIFY_START off", n)
+	}
+}

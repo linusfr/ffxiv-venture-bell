@@ -53,15 +53,22 @@ type Completion struct {
 	DoneAt    int64  `json:"done_at"`
 }
 
-// merge replaces what is known about one character.
-func (s *State) merge(name string, in []Retainer, now time.Time) {
+// merge replaces what is known about one character, and reports the ventures
+// that are newly under way.
+//
+// The first sync for a character reports nothing: installing the plugin with
+// eight ventures already running would otherwise announce all eight as if they
+// had just been assigned. That first sight is a silent baseline.
+func (s *State) merge(name string, in []Retainer, now time.Time) []Completion {
 	prev := map[string]entry{}
+	_, known := s.Characters[name]
 	if c, ok := s.Characters[name]; ok {
 		for _, e := range c.Retainers {
 			prev[e.Name] = e
 		}
 	}
 
+	var started []Completion
 	out := make([]entry, 0, len(in))
 	for _, r := range in {
 		e := entry{Name: r.Name, Venture: r.Venture, DoneAt: r.DoneAt}
@@ -74,11 +81,20 @@ func (s *State) merge(name string, in []Retainer, now time.Time) {
 			// only syncs at the summoning bell, so this is on screen right now
 			// — pushing it to a phone would be telling you what you can see.
 			e.Notified = true
+		case known && e.DoneAt > now.Unix():
+			// A venture this retainer was not on a moment ago.
+			started = append(started, Completion{
+				Character: name,
+				Retainer:  e.Name,
+				Venture:   e.Venture,
+				DoneAt:    e.DoneAt,
+			})
 		}
 		out = append(out, e)
 	}
 
 	s.Characters[name] = &character{Retainers: out, SyncedAt: now.Unix()}
+	return started
 }
 
 // due returns everything to notify about now, and marks it notified.

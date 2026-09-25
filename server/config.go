@@ -17,6 +17,10 @@ type Config struct {
 	Lead      time.Duration // notify this long before a venture completes
 	Coalesce  time.Duration // ventures completing this close together share one notification
 	Stale     time.Duration // a completion missed by more than this is dropped, not sent late
+	// NotifyStart also announces ventures as they are assigned. Off by default:
+	// you are standing at the summoning bell when it happens, so the useful part
+	// is the confirmation that the server has the timers, not the news itself.
+	NotifyStart bool
 
 	Pushover   PushoverConfig
 	WebhookURL string
@@ -43,7 +47,8 @@ func LoadConfig() (Config, error) {
 			Device: os.Getenv("PUSHOVER_DEVICE"),
 			Sound:  os.Getenv("PUSHOVER_SOUND"),
 		},
-		WebhookURL: os.Getenv("BELL_WEBHOOK_URL"),
+		WebhookURL:  os.Getenv("BELL_WEBHOOK_URL"),
+		NotifyStart: os.Getenv("BELL_NOTIFY_START") != "",
 	}
 
 	var err error
