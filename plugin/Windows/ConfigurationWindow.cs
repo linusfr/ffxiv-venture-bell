@@ -9,6 +9,7 @@ public sealed class ConfigurationWindow : IDisposable
 {
     private static readonly Vector4 Heading = new(1f, 0.8f, 0.3f, 1f);
     private static readonly Vector4 Warning = new(0.95f, 0.6f, 0.25f, 1f);
+    private static readonly Vector4 Muted   = new(0.6f, 0.6f, 0.6f, 1f);
 
     private readonly Plugin _plugin;
     private Configuration Config => _plugin.Config;
@@ -23,6 +24,9 @@ public sealed class ConfigurationWindow : IDisposable
     // The indicator is only meaningful if something checked recently, and the
     // window opening is the moment someone wants to know.
     private bool _wasVisible;
+
+    private Snapshot? _retainers;
+    private DateTime  _retainersReadAt = DateTime.MinValue;
 
     public ConfigurationWindow(Plugin plugin)
     {
@@ -51,6 +55,12 @@ public sealed class ConfigurationWindow : IDisposable
             if (ImGui.BeginTabItem("On-screen list"))
             {
                 DrawWindowTab();
+                ImGui.EndTabItem();
+            }
+
+            if (ImGui.BeginTabItem("Ventures"))
+            {
+                DrawVenturesTab();
                 ImGui.EndTabItem();
             }
 
@@ -129,6 +139,87 @@ public sealed class ConfigurationWindow : IDisposable
         }
 
         ImGui.EndDisabled();
+    }
+
+    // ── The ventures ──────────────────────────────────────────────────────────
+    private void DrawVenturesTab()
+    {
+        ImGui.Spacing();
+        ImGui.TextWrapped(
+            "What each retainer could be on. Repeating one venture forever means a " +
+            "retainer that levels up keeps running the tier it outgrew.");
+        ImGui.Spacing();
+
+        var snapshot = Retainers();
+        if (snapshot is null || snapshot.Value.Retainers.Count == 0)
+        {
+            ImGui.TextColored(Warning, "No retainers loaded — open Timers once.");
+            return;
+        }
+
+        if (ImGui.BeginTable("##ventures", 4, ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingFixedFit))
+        {
+            ImGui.TableSetupColumn("Retainer");
+            ImGui.TableSetupColumn("Lv");
+            ImGui.TableSetupColumn("On now");
+            ImGui.TableSetupColumn("Best available");
+            ImGui.TableHeadersRow();
+
+            foreach (var r in snapshot.Value.Retainers)
+            {
+                var best = _plugin.Resolver.BestExploration(r.ClassJob, r.Level);
+
+                ImGui.TableNextRow();
+                ImGui.TableNextColumn();
+                ImGui.Text(r.Name);
+                ImGui.TableNextColumn();
+                ImGui.Text(r.Level.ToString());
+                ImGui.TableNextColumn();
+                ImGui.TextDisabled(r.Venture.Length > 0 ? r.Venture : "idle");
+
+                ImGui.TableNextColumn();
+                if (best is null)
+                {
+                    ImGui.TextDisabled("—");
+                    continue;
+                }
+
+                // Already on it is the quiet case; anything else is the point
+                // of this table.
+                var onIt = r.VentureId == best.Value.TaskId;
+                ImGui.TextColored(onIt ? Muted : Heading, best.Value.Name);
+                if (best.Value.RequiredItemLevel > 0)
+                {
+                    ImGui.SameLine();
+                    ImGui.TextDisabled($"i{best.Value.RequiredItemLevel}");
+                }
+            }
+
+            ImGui.EndTable();
+        }
+
+        ImGui.Spacing();
+        ImGui.TextDisabled("Item level is reported, not checked: the client does not tell us a");
+        ImGui.TextDisabled("retainer's gear, so the game has the last word on what it will offer.");
+
+        var quick = _plugin.Resolver.QuickExploration();
+        if (quick is not null)
+            ImGui.TextDisabled($"The other option is always {quick.Value.Name}.");
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.TextDisabled("Assigning from here is not wired up yet.");
+    }
+
+    /// <summary>The retainers, read at most once a second while this is open.</summary>
+    private Snapshot? Retainers()
+    {
+        if (DateTime.UtcNow - _retainersReadAt < TimeSpan.FromSeconds(1))
+            return _retainers;
+
+        _retainersReadAt = DateTime.UtcNow;
+        _retainers       = _plugin.ReadRetainers();
+        return _retainers;
     }
 
     // ── The notifications ─────────────────────────────────────────────────────

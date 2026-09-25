@@ -134,6 +134,11 @@ internal sealed class BellClient : IDisposable
             if (response.IsSuccessStatusCode)
                 return null;
 
+            // A server that has never heard of /test is an old one, and its 404
+            // says "page not found" rather than anything useful.
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                return "this server has no test endpoint — it predates 2.1.0.";
+
             var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
             return Shorten(body).Length > 0 ? Shorten(body) : response.ReasonPhrase ?? "the server refused the test.";
         }

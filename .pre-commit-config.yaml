@@ -13,6 +13,9 @@ repos:
         exclude: ^chart/templates/
       - id: check-json
       - id: end-of-file-fixer
+        # go-semantic-release writes the changelog and does not end it with a
+        # newline; fixing it locally only means a conflict at the next release.
+        exclude: ^CHANGELOG\.md$
       - id: trailing-whitespace
         files: ^(?!.*\.md$).*
 

@@ -25,8 +25,10 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static IChatGui                ChatGui         { get; private set; } = null!;
     [PluginService] internal static ICondition              Condition       { get; private set; } = null!;
 
-    internal Configuration Config { get; }
+    internal Configuration   Config   { get; }
+    internal VentureResolver Resolver { get; private set; } = null!;
 
+    private readonly RetainerReader      _reader;
     private readonly BellClient          _client;
     private readonly VentureSync         _sync;
     private readonly ConfigurationWindow _configWindow;
@@ -41,7 +43,9 @@ public sealed class Plugin : IDalamudPlugin
             PluginInterface.SavePluginConfig(Config);
 
         var reader = new RetainerReader(DataManager, Log);
+        Resolver   = new VentureResolver(DataManager, Log);
 
+        _reader        = reader;
         _client        = new BellClient();
         _sync          = new VentureSync(Config, reader, _client,
                                          Framework, AddonLifecycle, PlayerState, Log);
@@ -59,6 +63,9 @@ public sealed class Plugin : IDalamudPlugin
 
         Log.Info("VentureBell: Plugin loaded.");
     }
+
+    /// <summary>The retainers as the game has them, for the settings window.</summary>
+    internal Snapshot? ReadRetainers() => _reader.Read(PlayerState);
 
     internal string    Status => _sync.Status;
     internal LinkState Link   => _sync.Link;

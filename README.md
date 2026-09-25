@@ -10,6 +10,15 @@ do not need it. The plugin sends the completion times to a small server; the
 server holds the countdown and pushes a notification — game closed, PC asleep,
 you at work.
 
+![Venture Bell notifications on a phone](images/screenshots/notifications.png)
+
+<details>
+<summary>The same on the desktop</summary>
+
+![The same notifications in Pushover's desktop client](images/screenshots/notifications-desktop.png)
+
+</details>
+
 ```text
 ┌─────────────────┐   "Sultana is back at 19:42,    ┌──────────────┐
 │  Venture Bell   │    Bubbles at 19:43"            │  venturebell │

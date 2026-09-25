@@ -228,7 +228,11 @@ jobs:
           entries = json.load(open("pluginmaster.json"))
           entries[0]["AssemblyVersion"] = version + ".0"
           entries[0]["LastUpdated"] = int(time.time())
-          json.dump(entries, open("pluginmaster.json", "w"), indent=2)
+          with open("pluginmaster.json", "w") as f:
+              json.dump(entries, f, indent=2)
+              # The pre-commit hooks insist on one, and without it every release
+              # leaves a one-character diff behind for the next commit to trip on.
+              f.write("\n")
           PY
 
       - name: Commit the manifest

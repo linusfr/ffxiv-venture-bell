@@ -13,7 +13,11 @@ namespace VentureBell;
 /// <param name="Name">The retainer's name.</param>
 /// <param name="Venture">What it was sent on, empty when nothing is running.</param>
 /// <param name="DoneAt">Unix seconds the venture completes; 0 when nothing is running.</param>
-public readonly record struct RetainerVenture(string Name, string Venture, long DoneAt);
+/// <param name="VentureId">The RetainerTask row it is on, for comparing against what it could be on.</param>
+/// <param name="ClassJob">Its class, which decides which explorations it may take.</param>
+/// <param name="Level">Its level, which decides how far up those go.</param>
+public readonly record struct RetainerVenture(
+    string Name, string Venture, long DoneAt, ushort VentureId = 0, byte ClassJob = 0, byte Level = 0);
 
 /// <summary>Everything the client knows about one character's retainers.</summary>
 public readonly record struct Snapshot(string Character, IReadOnlyList<RetainerVenture> Retainers)
@@ -81,7 +85,7 @@ internal sealed class RetainerReader
             var venture = retainer.VentureId == 0 ? "" : VentureName(retainer.VentureId);
             var doneAt  = retainer.VentureId == 0 ? 0L : retainer.VentureComplete;
 
-            found.Add(new RetainerVenture(name, venture, doneAt));
+            found.Add(new RetainerVenture(name, venture, doneAt, retainer.VentureId, retainer.ClassJob, retainer.Level));
         }
 
         return new Snapshot(Character(player), found);
