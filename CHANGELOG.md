@@ -1,10 +1,10 @@
-## 1.1.0 (2026-09-25)
+## 1.1.1 (2026-09-25)
 
-#### Feature
+#### Bug Fixes
 
-* **server:** optionally announce ventures as they start (49d99f81)
+* **server:** carry the timezone database in the binary (5d584ca7)
 
 #### Chores
 
-* pluginmaster 1.0.0 [skip ci] (76196a19)
+* pluginmaster 1.1.0 [skip ci] (cc262ad0)
 
