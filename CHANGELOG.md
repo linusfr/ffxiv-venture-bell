@@ -1,10 +1,10 @@
-## 2.3.0 (2026-09-25)
+## 2.3.1 (2026-09-25)
 
-#### Feature
+#### Bug Fixes
 
-* **plugin:** show the venture timers on screen (19f1e878)
+* **plugin:** make the on-screen list usable (50aa1770)
 
 #### Chores
 
-* pluginmaster 2.2.0 [skip ci] (b2a70d21)
+* pluginmaster 2.3.0 [skip ci] (cbdfa40e)
 
