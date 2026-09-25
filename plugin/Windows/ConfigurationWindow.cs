@@ -10,6 +10,7 @@ public sealed class ConfigurationWindow : IDisposable
     private static readonly Vector4 Heading = new(1f, 0.8f, 0.3f, 1f);
     private static readonly Vector4 Warning = new(0.95f, 0.6f, 0.25f, 1f);
     private static readonly Vector4 Muted   = new(0.6f, 0.6f, 0.6f, 1f);
+    private static readonly Vector4 Done    = new(0.45f, 0.85f, 0.5f, 1f);
 
     private readonly Plugin _plugin;
     private Configuration Config => _plugin.Config;
@@ -97,6 +98,8 @@ public sealed class ConfigurationWindow : IDisposable
 
         Section("Appearance");
         Toggle("Name the venture, not just the time", Config.ShowVentureNames, v => Config.ShowVentureNames = v);
+        Toggle("Turn the list green when a venture is back", Config.HighlightWhenBack,
+               v => Config.HighlightWhenBack = v);
 
         var size = Config.WindowFontSize;
         ImGui.SetNextItemWidth(-1);
@@ -146,69 +149,71 @@ public sealed class ConfigurationWindow : IDisposable
     {
         ImGui.Spacing();
         ImGui.TextWrapped(
-            "What each retainer could be on. Repeating one venture forever means a " +
-            "retainer that levels up keeps running the tier it outgrew.");
-        ImGui.Spacing();
+            "Repeating one venture forever means a retainer that levels up keeps running " +
+            "the tier it outgrew. This sends each one on the best its class and level allow.");
+
+        Section("Your retainers");
 
         var snapshot = Retainers();
         if (snapshot is null || snapshot.Value.Retainers.Count == 0)
         {
-            ImGui.TextColored(Warning, "No retainers loaded — open Timers once.");
-            return;
+            ImGui.TextColored(Warning, "None loaded — open Timers once, or stand at a bell.");
         }
-
-        if (ImGui.BeginTable("##ventures", 4, ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingFixedFit))
+        else if (ImGui.BeginTable("##ventures", 3, ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingFixedFit))
         {
             ImGui.TableSetupColumn("Retainer");
             ImGui.TableSetupColumn("Lv");
             ImGui.TableSetupColumn("On now");
-            ImGui.TableSetupColumn("Best available");
             ImGui.TableHeadersRow();
 
             foreach (var r in snapshot.Value.Retainers)
-            {
-                var best = _plugin.Resolver.BestExploration(r.ClassJob, r.Level);
-
-                ImGui.TableNextRow();
-                ImGui.TableNextColumn();
-                ImGui.Text(r.Name);
-                ImGui.TableNextColumn();
-                ImGui.Text(r.Level.ToString());
-                ImGui.TableNextColumn();
-                ImGui.TextDisabled(r.Venture.Length > 0 ? r.Venture : "idle");
-
-                ImGui.TableNextColumn();
-                if (best is null)
-                {
-                    ImGui.TextDisabled("—");
-                    continue;
-                }
-
-                // Already on it is the quiet case; anything else is the point
-                // of this table.
-                var onIt = r.VentureId == best.Value.TaskId;
-                ImGui.TextColored(onIt ? Muted : Heading, best.Value.Name);
-                if (best.Value.RequiredItemLevel > 0)
-                {
-                    ImGui.SameLine();
-                    ImGui.TextDisabled($"i{best.Value.RequiredItemLevel}");
-                }
-            }
+                VentureRow(r);
 
             ImGui.EndTable();
         }
 
-        ImGui.Spacing();
-        ImGui.TextDisabled("Item level is reported, not checked: the client does not tell us a");
-        ImGui.TextDisabled("retainer's gear, so the game has the last word on what it will offer.");
+        ImGui.TextDisabled("Sending them out happens at a summoning bell, from the buttons above the list.");
 
-        var quick = _plugin.Resolver.QuickExploration();
-        if (quick is not null)
-            ImGui.TextDisabled($"The other option is always {quick.Value.Name}.");
+        Section("Settings");
+        Toggle("Buttons above the retainer list at a bell", Config.ShowRetainerBar,
+               v => Config.ShowRetainerBar = v);
+        Toggle("Take the highest exploration the retainer qualifies for", Config.TakeHighestQualified,
+               v => Config.TakeHighestQualified = v);
+        ImGui.TextDisabled(Config.TakeHighestQualified
+            ? "  A retainer whose gear lags its level quietly goes on a lower tier."
+            : "  Off: stops and says so instead, so you can go and upgrade their gear.");
 
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.TextDisabled("Assigning from here is not wired up yet.");
+        if (_plugin.DryRunPending)
+        {
+            Section("In flight");
+            ImGui.TextColored(Warning, _plugin.DryRunWanted);
+            if (ImGui.Button("Clear the queue"))
+                _plugin.CancelDryRun();
+        }
+    }
+
+    private void VentureRow(RetainerVenture r)
+    {
+        var running = r.DoneAt > DateTimeOffset.Now.ToUnixTimeSeconds();
+
+
+        ImGui.TableNextRow();
+
+        ImGui.TableNextColumn();
+        ImGui.Text(r.Name);
+
+        ImGui.TableNextColumn();
+        ImGui.TextDisabled(r.Level.ToString());
+
+        ImGui.TableNextColumn();
+        if (running)
+            ImGui.TextDisabled($"{r.Venture} · {VentureWindow.Format(DateTimeOffset.FromUnixTimeSeconds(r.DoneAt) - DateTimeOffset.Now)}");
+        else if (r.Venture.Length > 0)
+            ImGui.TextColored(Done, $"{r.Venture} · back");
+        else
+            ImGui.TextDisabled("idle");
+
+
     }
 
     /// <summary>The retainers, read at most once a second while this is open.</summary>
@@ -227,7 +232,7 @@ public sealed class ConfigurationWindow : IDisposable
     {
         ImGui.Spacing();
         Toggle("Send my timers to a server", Config.NotificationsEnabled, v => Config.NotificationsEnabled = v);
-        ImGui.TextDisabled("  So a venture finishing reaches your phone with the game closed.");
+        ImGui.TextDisabled("  So a venture finishing reaches you with the game closed.");
 
         ImGui.BeginDisabled(!Config.NotificationsEnabled);
 

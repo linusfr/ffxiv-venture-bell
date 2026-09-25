@@ -14,6 +14,20 @@ namespace VentureBell;
 /// <param name="RequiredItemLevel">Item level it asks for; 0 when it asks none.</param>
 public readonly record struct VentureOption(uint TaskId, string Name, int RequiredLevel, int RequiredItemLevel);
 
+public static class VentureName
+{
+    /// <summary>
+    /// "Field Exploration VIII" becomes "field": the short word a button can
+    /// wear. A gatherer's reads "highland" or "waterside", so it is taken from
+    /// the venture rather than written down.
+    /// </summary>
+    public static string Word(string venture)
+    {
+        var space = venture.IndexOf(' ');
+        return (space > 0 ? venture[..space] : venture).ToLowerInvariant();
+    }
+}
+
 /// <summary>
 /// Works out what a retainer should be sent on, from the sheets rather than
 /// from what it happens to be doing — which is the gap in repeating a fixed

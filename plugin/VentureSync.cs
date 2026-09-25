@@ -164,7 +164,7 @@ internal sealed class VentureSync : IDisposable
             if (error is null)
             {
                 Link   = LinkState.Connected;
-                Status = $"Test sent at {DateTime.Now:HH:mm:ss} — check your phone.";
+                Status = $"Test sent at {DateTime.Now:HH:mm:ss} — check your Pushover client.";
             }
             else
             {

@@ -46,6 +46,14 @@ public sealed class Configuration : IPluginConfiguration
     /// goes out when something changed.
     public int PollSeconds { get; set; } = 60;
 
+    /// On: take the highest venture the retainer actually qualifies for, which
+    /// is whatever the game offers. Off: stop instead, since a lower tier on
+    /// offer means the gear is behind the level and you may want to fix that.
+    public bool TakeHighestQualified { get; set; } = true;
+
+    /// Show the buttons above the summoning bell's retainer list.
+    public bool ShowRetainerBar { get; set; } = true;
+
     /// Show the on-screen list of what the retainers are doing.
     public bool ShowWindow { get; set; } = true;
 
@@ -64,6 +72,10 @@ public sealed class Configuration : IPluginConfiguration
     /// Text size in pixels. A real size rather than a scale factor, which
     /// stretches the glyphs and goes soft above 1x.
     public float WindowFontSize { get; set; } = 16f;
+
+    /// Turn the whole list green while a venture is back, rather than leaving it
+    /// to the word next to the retainer. Off by default: it is loud on purpose.
+    public bool HighlightWhenBack { get; set; }
 
     /// Background opacity. 0 is nothing but text over the game.
     public float WindowBackgroundAlpha { get; set; } = 0.35f;

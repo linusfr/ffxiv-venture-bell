@@ -76,9 +76,17 @@ internal sealed class VentureWindow : IDisposable
             flags |= ImGuiWindowFlags.NoInputs | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoResize;
 
         // All move mode changes: a background you can aim at, costing no space.
-        ImGui.SetNextWindowBgAlpha(Repositioning ? 0.85f : Config.WindowBackgroundAlpha);
+        // A whole-window colour reads from across the screen in a way a word
+        // next to a name does not.
+        var celebrate = Config.HighlightWhenBack && !Repositioning && AnyComplete();
+
+        ImGui.SetNextWindowBgAlpha(Repositioning ? 0.85f
+                                 : celebrate     ? MathF.Max(Config.WindowBackgroundAlpha, 0.55f)
+                                                 : Config.WindowBackgroundAlpha);
         if (Repositioning)
             ImGui.PushStyleColor(ImGuiCol.WindowBg, new Vector4(0.20f, 0.35f, 0.25f, 1f));
+        else if (celebrate)
+            ImGui.PushStyleColor(ImGuiCol.WindowBg, new Vector4(0.15f, 0.45f, 0.20f, 1f));
 
         // Only when it has drifted. Setting it unconditionally would swallow
         // the drag, which ImGui applies before Begin.
@@ -90,7 +98,7 @@ internal sealed class VentureWindow : IDisposable
         }
 
         var open = ImGui.Begin("###VentureBellOverlay", flags);
-        if (Repositioning)
+        if (Repositioning || celebrate)
             ImGui.PopStyleColor();
         if (!open)
         {
