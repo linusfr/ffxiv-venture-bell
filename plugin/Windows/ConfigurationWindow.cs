@@ -37,60 +37,45 @@ public sealed class ConfigurationWindow : IDisposable
 
         if (!IsVisible) return;
 
-        ImGui.SetNextWindowSize(new Vector2(480, 420), ImGuiCond.FirstUseEver);
+        ImGui.SetNextWindowSize(new Vector2(480, 440), ImGuiCond.FirstUseEver);
         if (!ImGui.Begin("Venture Bell###VentureBellSettings", ref _isVisible))
         {
             ImGui.End();
             return;
         }
 
-        Toggle("Enable plugin", Config.Enabled, v => Config.Enabled = v);
+        // One tab per half, because they are independent: the list works with
+        // nothing configured, and the notifications need no list.
+        if (ImGui.BeginTabBar("##tabs"))
+        {
+            if (ImGui.BeginTabItem("On-screen list"))
+            {
+                DrawWindowTab();
+                ImGui.EndTabItem();
+            }
 
-        ImGui.BeginDisabled(!Config.Enabled);
+            if (ImGui.BeginTabItem("Notifications"))
+            {
+                DrawNotificationsTab();
+                ImGui.EndTabItem();
+            }
 
-        Section("Server");
-        ImGui.TextDisabled("Where your venturebell server is listening.");
-        Text(Config.ServerUrl, v => Config.ServerUrl = v, "##url", "https://venture-bell.example.com");
+            ImGui.EndTabBar();
+        }
 
+        ImGui.End();
+    }
+
+    // ── The list ──────────────────────────────────────────────────────────────
+    private void DrawWindowTab()
+    {
         ImGui.Spacing();
-        ImGui.TextDisabled("The server's BELL_TOKEN.");
-        Text(Config.Token, v => Config.Token = v, "##token", "",
-             _showToken ? ImGuiInputTextFlags.None : ImGuiInputTextFlags.Password);
-        ImGui.Checkbox("Show token", ref _showToken);
-
-        ImGui.Spacing();
-        Link();
-
-        Section("Pushover");
-        ImGui.TextDisabled("The server stores no Pushover account of its own, so these are");
-        ImGui.TextDisabled("what it notifies you with. Both are needed.");
-
-        ImGui.Spacing();
-        ImGui.TextDisabled("Application API token — pushover.net/apps/build, any name.");
-        Text(Config.PushoverToken, v => Config.PushoverToken = v, "##pushover-token", "",
-             _showPushoverToken ? ImGuiInputTextFlags.None : ImGuiInputTextFlags.Password);
-        ImGui.Checkbox("Show application token", ref _showPushoverToken);
-
-        ImGui.Spacing();
-        ImGui.TextDisabled("User key — top right of the Pushover dashboard.");
-        Text(Config.PushoverUser, v => Config.PushoverUser = v, "##pushover-user", "uxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
-
-        if (!Config.HasPushover)
-            ImGui.TextColored(Warning, "  Without both, the server has nowhere to send your notifications.");
-
-        ImGui.Spacing();
-        ImGui.BeginDisabled(!Config.HasPushover);
-        if (ImGui.Button("Send a test notification"))
-            _plugin.SendTestNotification();
-        ImGui.EndDisabled();
-        ImGui.SameLine();
-        ImGui.TextDisabled("Pushes one message now, so you know before a venture is due.");
-
-        Section("On-screen list");
-        Toggle("Show it", Config.ShowWindow, v => Config.ShowWindow = v);
+        Toggle("Show the list on screen", Config.ShowWindow, v => Config.ShowWindow = v);
+        ImGui.TextDisabled("  Reads the game only. Needs no server and no account.");
 
         ImGui.BeginDisabled(!Config.ShowWindow);
 
+        Section("When");
         var condition = (int)Config.WindowCondition;
         ImGui.SetNextItemWidth(-1);
         if (ImGui.Combo("##condition", ref condition, "Always\0When a venture is back\0When all are back\0"))
@@ -98,9 +83,10 @@ public sealed class ConfigurationWindow : IDisposable
             Config.WindowCondition = (VentureWindowCondition)condition;
             _plugin.SaveConfig();
         }
-
-        Toggle("Name the venture, not just the time", Config.ShowVentureNames, v => Config.ShowVentureNames = v);
         Toggle("Hide it in duties and cutscenes", Config.HideInDuty, v => Config.HideInDuty = v);
+
+        Section("Appearance");
+        Toggle("Name the venture, not just the time", Config.ShowVentureNames, v => Config.ShowVentureNames = v);
 
         var size = Config.WindowFontSize;
         ImGui.SetNextItemWidth(-1);
@@ -118,7 +104,8 @@ public sealed class ConfigurationWindow : IDisposable
             _plugin.SaveConfig();
         }
 
-        // Locked is click-through, so the only way to move it is to say so.
+        Section("Placement");
+        // Locked is click-through, so moving it has to be asked for.
         if (_plugin.Repositioning)
         {
             if (ImGui.Button("Anchor it here"))
@@ -142,6 +129,46 @@ public sealed class ConfigurationWindow : IDisposable
         }
 
         ImGui.EndDisabled();
+    }
+
+    // ── The notifications ─────────────────────────────────────────────────────
+    private void DrawNotificationsTab()
+    {
+        ImGui.Spacing();
+        Toggle("Send my timers to a server", Config.NotificationsEnabled, v => Config.NotificationsEnabled = v);
+        ImGui.TextDisabled("  So a venture finishing reaches your phone with the game closed.");
+
+        ImGui.BeginDisabled(!Config.NotificationsEnabled);
+
+        Section("Server");
+        ImGui.TextDisabled("Where your venturebell server is listening.");
+        Text(Config.ServerUrl, v => Config.ServerUrl = v, "##url", "https://venture-bell.example.com");
+
+        ImGui.Spacing();
+        ImGui.TextDisabled("The server's BELL_TOKEN.");
+        Text(Config.Token, v => Config.Token = v, "##token", "",
+             _showToken ? ImGuiInputTextFlags.None : ImGuiInputTextFlags.Password);
+        ImGui.Checkbox("Show token", ref _showToken);
+
+        ImGui.Spacing();
+        Link();
+
+        Section("Pushover");
+        ImGui.TextDisabled("The server stores no account of its own, so these are what it");
+        ImGui.TextDisabled("notifies you with. Both are needed.");
+
+        ImGui.Spacing();
+        ImGui.TextDisabled("Application API token — pushover.net/apps/build, any name.");
+        Text(Config.PushoverToken, v => Config.PushoverToken = v, "##pushover-token", "",
+             _showPushoverToken ? ImGuiInputTextFlags.None : ImGuiInputTextFlags.Password);
+        ImGui.Checkbox("Show application token", ref _showPushoverToken);
+
+        ImGui.Spacing();
+        ImGui.TextDisabled("User key — top right of the Pushover dashboard.");
+        Text(Config.PushoverUser, v => Config.PushoverUser = v, "##pushover-user", "uxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");
+
+        if (!Config.HasPushover)
+            ImGui.TextColored(Warning, "  Without both, the server has nowhere to send your notifications.");
 
         Section("When to sync");
         ImGui.TextDisabled("  Always on closing the summoning bell, and this often otherwise.");
@@ -152,13 +179,8 @@ public sealed class ConfigurationWindow : IDisposable
             Config.PollSeconds = poll;
             _plugin.SaveConfig();
         }
-        ImGui.TextDisabled("  A request only goes out when a timer has actually changed.");
 
-        Section("Debug");
-        Toggle("Log every sync", Config.DebugMode, v => Config.DebugMode = v);
-        ImGui.TextDisabled("  Writes to the Dalamud log (/xllog).");
-
-        ImGui.EndDisabled();
+        Toggle("Log every sync to /xllog", Config.DebugMode, v => Config.DebugMode = v);
 
         Section("Actions");
         if (ImGui.Button("Send now"))
@@ -166,13 +188,18 @@ public sealed class ConfigurationWindow : IDisposable
         ImGui.SameLine();
         if (ImGui.Button("Check connection"))
             _plugin.CheckConnection();
-        ImGui.TextDisabled("  \"Send now\" syncs the current timers even if nothing changed.");
+        ImGui.SameLine();
+        ImGui.BeginDisabled(!Config.HasPushover);
+        if (ImGui.Button("Test notification"))
+            _plugin.SendTestNotification();
+        ImGui.EndDisabled();
 
-        // Every button on this window reports here, next to the buttons rather
-        // than beside the server address where the first version put it.
+        // Every button reports here, next to the buttons.
         ImGui.Spacing();
         ImGui.TextColored(Heading, "Last action");
         ImGui.TextWrapped(_plugin.Status);
+
+        ImGui.EndDisabled();
 
         ImGui.Spacing();
         ImGui.Separator();
@@ -180,8 +207,6 @@ public sealed class ConfigurationWindow : IDisposable
             "Sends your character name, your retainers' names, their venture completion times and " +
             "your Pushover key to the address above. Nothing else, nowhere else, and nothing at all " +
             "until a server and token are set.");
-
-        ImGui.End();
     }
 
     /// <summary>

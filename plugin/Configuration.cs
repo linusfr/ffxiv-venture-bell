@@ -14,10 +14,16 @@ public enum VentureWindowCondition
 [System.Serializable]
 public sealed class Configuration : IPluginConfiguration
 {
-    public int Version { get; set; } = 1;
+    public int Version { get; set; } = 2;
 
-    /// Master switch. Off stops every sync; the plugin stays loaded and sends nothing.
-    public bool Enabled { get; set; } = true;
+    /// The notification half: syncing timers to a server. Off stops every sync;
+    /// the on-screen list is unaffected, and works with nothing configured.
+    public bool NotificationsEnabled { get; set; } = true;
+
+    /// Was the master switch before the two halves became independent. Read once
+    /// on load, then cleared.
+    [System.Obsolete("Migrated to NotificationsEnabled.")]
+    public bool? Enabled { get; set; }
 
     /// Base address of your venturebell server, e.g. "http://127.0.0.1:8770".
     /// Empty until you set it, and an empty address means nothing is ever sent.
@@ -78,5 +84,19 @@ public sealed class Configuration : IPluginConfiguration
     }
 
     /// Nothing is sent without an address and a token.
-    internal bool IsConfigured => Enabled && ServerUrl.Length > 0 && Token.Length > 0;
+    internal bool IsConfigured => NotificationsEnabled && ServerUrl.Length > 0 && Token.Length > 0;
+
+    /// <summary>Carries a pre-2 setting over. Returns true when something moved.</summary>
+    internal bool Migrate()
+    {
+#pragma warning disable CS0618
+        if (Enabled is not bool legacy)
+            return false;
+
+        NotificationsEnabled = legacy;
+        Enabled              = null;
+#pragma warning restore CS0618
+        Version = 2;
+        return true;
+    }
 }

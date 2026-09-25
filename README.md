@@ -33,6 +33,10 @@ Add to Dalamud's custom plugin repositories (`/xlsettings` → Experimental):
 https://raw.githubusercontent.com/linusfr/ffxiv-venture-bell/main/pluginmaster.json
 ```
 
+The two halves are independent, one settings tab each. **On-screen list** reads
+the game and needs nothing else — no server, no account — so if that is all you
+want, you are done. **Notifications** is the rest of this page.
+
 Run the server (below), put its address and token into `/venturebell` — a green
 dot means it answered — then add your Pushover credentials:
 [register an application](https://pushover.net/apps/build), and paste its API
@@ -103,11 +107,14 @@ new packages private, so a first pull may need the visibility flipped.
 
 On screen, a small list shows what each retainer is doing and when it is back:
 
-```text
-Vexie   Field Exploration VIII   2h07m
-Popsy   Field Exploration VIII   2h08m
-Coco                              idle
-```
+![The on-screen list](images/screenshots/list.png)
+
+<details>
+<summary>Without venture names</summary>
+
+![The list with venture names turned off](images/screenshots/list-compact.png)
+
+</details>
 
 Minute resolution, because a venture is hours away. No title bar, no buttons,
 click-through while locked, and out of the way in duties. It can be set to

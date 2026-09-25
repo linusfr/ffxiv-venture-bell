@@ -33,6 +33,8 @@ public sealed class Plugin : IDalamudPlugin
     public Plugin()
     {
         Config = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
+        if (Config.Migrate())
+            PluginInterface.SavePluginConfig(Config);
 
         var reader = new RetainerReader(DataManager, Log);
 
