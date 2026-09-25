@@ -60,6 +60,9 @@ public sealed class Configuration : IPluginConfiguration
     /// game underneath. Unlock from the settings to drag it.
     public bool WindowLocked { get; set; } = true;
 
+    /// Text size for the on-screen list, relative to the game's UI font.
+    public float WindowScale { get; set; } = 1f;
+
     /// Background opacity. 0 is nothing but text over the game.
     public float WindowBackgroundAlpha { get; set; } = 0.35f;
 

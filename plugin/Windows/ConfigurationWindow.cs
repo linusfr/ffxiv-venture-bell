@@ -102,6 +102,14 @@ public sealed class ConfigurationWindow : IDisposable
         Toggle("Name the venture, not just the time", Config.ShowVentureNames, v => Config.ShowVentureNames = v);
         Toggle("Hide it in duties and cutscenes", Config.HideInDuty, v => Config.HideInDuty = v);
 
+        var scale = Config.WindowScale;
+        ImGui.SetNextItemWidth(-1);
+        if (ImGui.SliderFloat("##scale", ref scale, 0.6f, 2.5f, "text %.2fx"))
+        {
+            Config.WindowScale = scale;
+            _plugin.SaveConfig();
+        }
+
         var alpha = Config.WindowBackgroundAlpha;
         ImGui.SetNextItemWidth(-1);
         if (ImGui.SliderFloat("##alpha", ref alpha, 0f, 1f, "background %.2f"))

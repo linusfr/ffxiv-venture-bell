@@ -88,6 +88,10 @@ internal sealed class VentureWindow : IDisposable
             return;
         }
 
+        // Applies to everything drawn in this window, so the table measures and
+        // lays out at the same size it renders.
+        ImGui.SetWindowFontScale(Config.WindowScale);
+
         // Where it ended up, which the next frame compares its anchor against.
         var previous   = _lastPos;
         var firstFrame = !_seen;
@@ -178,8 +182,14 @@ internal sealed class VentureWindow : IDisposable
                                            : (Pending, Format(remaining));
 
         // Right-aligned, so the numbers form a column rather than trailing the
-        // venture names.
-        var offset = ImGui.GetColumnWidth() - ImGui.CalcTextSize(text).X;
+        // venture names. GetContentRegionAvail is the space left in this cell;
+        // GetColumnWidth belongs to the old Columns API and, inside a table,
+        // reports the window's content width — which is what used to leave a
+        // gap the width of the window between the name and the time.
+        //
+        // CalcTextSize ignores the window font scale, so it is applied here.
+        var width  = ImGui.CalcTextSize(text).X * Config.WindowScale;
+        var offset = ImGui.GetContentRegionAvail().X - width;
         if (offset > 0)
             ImGui.SetCursorPosX(ImGui.GetCursorPosX() + offset);
         ImGui.TextColored(colour, text);
