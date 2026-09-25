@@ -1,10 +1,10 @@
-## 2.4.0 (2026-09-25)
+## 2.5.0 (2026-09-25)
 
 #### Feature
 
-* **plugin:** split the settings into two tabs (8a97e2cb)
+* **plugin:** load the venture timers from the list itself (5b0cacee)
 
 #### Chores
 
-* pluginmaster 2.3.1 [skip ci] (ce081d8f)
+* pluginmaster 2.4.0 [skip ci] (6be5670c)
 
