@@ -37,8 +37,9 @@ config:
   notifyStart: false
   # Also POST the notification as JSON here — ntfy, gotify, Home Assistant.
   webhookUrl: ""
-  # Needed for readable times in start notifications; UTC otherwise.
-  timezone: ""
+  # Times in start notifications are rendered in this zone. The image carries
+  # its own copy of the tz database, so any IANA name works.
+  timezone: Europe/Berlin
   pushover:
     priority: ""
     device: ""

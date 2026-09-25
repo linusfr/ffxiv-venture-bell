@@ -78,6 +78,7 @@ so the first pull may need the visibility flipped.
 | `PUSHOVER_TOKEN`, `PUSHOVER_USER` | — | Your application token and user key |
 | `PUSHOVER_PRIORITY`, `_DEVICE`, `_SOUND` | `-1` | Priority `-2`…`1`; 2 needs an acknowledgement flow |
 | `BELL_NOTIFY_START` | unset | Any value also announces ventures as they are assigned, with the time they are back |
+| `TZ` | UTC | Zone for those times. The image carries its own tz database, so any IANA name works; the chart defaults to `Europe/Berlin` |
 | `BELL_WEBHOOK_URL` | — | Also POST the notification as JSON here: ntfy, gotify, Home Assistant |
 | `BELL_DEBUG` | unset | Debug logging |
 
@@ -101,8 +102,7 @@ quickest way to test the plumbing.
 - **Start notifications are opt-in and quiet by default.** You are at the bell
   when you assign a venture, so the news is the time it is back, not the event.
   The first sync for a character never announces starts — installing the plugin
-  with eight ventures running should not push eight "started". Set a `TZ` if you
-  turn this on, or the times come out in UTC
+  with eight ventures running should not push eight "started"
 - **A failed notification is not retried forever.** Pushover gets three attempts,
   then it is logged as an error rather than re-sent all day
 

@@ -12,6 +12,12 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	// The container image is distroless and carries no /usr/share/zoneinfo, so
+	// TZ=Europe/Berlin would silently resolve to UTC and every time printed in
+	// a notification would be an hour or two out. Embedding the database costs
+	// ~450KB and makes TZ mean what it says wherever this runs.
+	_ "time/tzdata"
 )
 
 func main() {
