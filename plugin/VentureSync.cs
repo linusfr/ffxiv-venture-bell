@@ -19,13 +19,16 @@ public enum LinkState
 }
 
 /// <summary>
-/// Decides when the server needs to hear from us: closing the summoning bell,
-/// and a slow poll for everything else — a venture assigned with the list
-/// already open, or a server that was down for the first attempt.
+/// Decides when the server needs to hear from us: closing the Timers window or
+/// a summoning bell, and a slow poll for everything else — a venture assigned
+/// with the list open, or a server that was down for the first attempt.
 /// </summary>
 internal sealed class VentureSync : IDisposable
 {
-    private const string RetainerListAddon = "RetainerList";
+    // Both windows make the client ask the server for venture timers, which is
+    // the only way the data arrives. Timers works from anywhere, so it is the
+    // one people actually use; the bell is where the timers change.
+    private static readonly string[] TimerAddons = { "RetainerList", "ContentsInfo" };
 
     private readonly Configuration   _config;
     private readonly RetainerReader  _reader;
@@ -61,12 +64,12 @@ internal sealed class VentureSync : IDisposable
 
         _framework.Update += OnUpdate;
         // PreFinalize: on the way out, what you just assigned is in memory.
-        _addons.RegisterListener(AddonEvent.PreFinalize, RetainerListAddon, OnRetainerListClosing);
+        _addons.RegisterListener(AddonEvent.PreFinalize, TimerAddons, OnTimersClosing);
     }
 
-    private void OnRetainerListClosing(AddonEvent type, AddonArgs args)
+    private void OnTimersClosing(AddonEvent type, AddonArgs args)
     {
-        _config.Debug(_log, "VentureBell: retainer list closing, checking timers.");
+        _config.Debug(_log, $"VentureBell: {args.AddonName} closing, checking timers.");
         Check(force: false);
     }
 
@@ -234,7 +237,7 @@ internal sealed class VentureSync : IDisposable
     public void Dispose()
     {
         _framework.Update -= OnUpdate;
-        _addons.UnregisterListener(AddonEvent.PreFinalize, RetainerListAddon, OnRetainerListClosing);
+        _addons.UnregisterListener(AddonEvent.PreFinalize, TimerAddons, OnTimersClosing);
 
         _shutdown.Cancel();
         _shutdown.Dispose();

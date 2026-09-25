@@ -19,9 +19,8 @@ public readonly record struct RetainerVenture(string Name, string Venture, long 
 public readonly record struct Snapshot(string Character, IReadOnlyList<RetainerVenture> Retainers)
 {
     /// <summary>
-    /// Cheap equality for "has anything changed since the last sync". Comparing the
-    /// snapshot itself would compare list references, and re-sending an unchanged
-    /// list every minute is a request per minute for nothing.
+    /// Cheap equality for "has anything changed": comparing the snapshot would
+    /// compare list references, and re-sending costs a request a minute.
     /// </summary>
     public string Fingerprint
     {
@@ -41,8 +40,7 @@ internal sealed class RetainerReader
     private readonly IDataManager _data;
     private readonly IPluginLog   _log;
 
-    // Venture names never change within a session, and the lookup is two sheet
-    // reads deep.
+    // Two sheet reads deep, and never changes within a session.
     private readonly Dictionary<ushort, string> _ventureNames = new();
 
     internal RetainerReader(IDataManager data, IPluginLog log)
@@ -52,10 +50,9 @@ internal sealed class RetainerReader
     }
 
     /// <summary>
-    /// The current snapshot, or null when there is nothing trustworthy to read:
-    /// no character loaded, or the client has not yet been told about the
-    /// retainers. The game only sends venture timers once you have been to a
-    /// summoning bell, and <c>IsReady</c> is how it says so.
+    /// The current snapshot, or null when there is nothing trustworthy to read.
+    /// The client has to ask the server for venture timers — opening Timers or a
+    /// summoning bell is what asks; <c>IsReady</c> is how it says so.
     /// </summary>
     internal unsafe Snapshot? Read(IPlayerState player)
     {
@@ -79,9 +76,8 @@ internal sealed class RetainerReader
             if (string.IsNullOrEmpty(name))
                 continue;
 
-            // VentureId 0 is an idle retainer. It still belongs in the payload:
-            // the server replaces its whole picture on every sync, so leaving it
-            // out would look like the retainer was dismissed.
+            // An idle retainer still belongs in the payload: the server
+            // replaces its whole picture, so omitting one reads as dismissed.
             var venture = retainer.VentureId == 0 ? "" : VentureName(retainer.VentureId);
             var doneAt  = retainer.VentureId == 0 ? 0L : retainer.VentureComplete;
 
@@ -99,8 +95,7 @@ internal sealed class RetainerReader
 
     /// <summary>
     /// The name the Retainer Task window shows. Exploration ventures carry their
-    /// own name; every other venture is named after what it goes and fetches, so
-    /// the row points at an item instead.
+    /// own; the rest are named after the item they fetch.
     /// </summary>
     private string VentureName(ushort ventureId)
     {

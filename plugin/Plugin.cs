@@ -1,8 +1,12 @@
+using System;
+
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.Command;
 using Dalamud.IoC;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
+
+using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 
 using VentureBell.Windows;
 
@@ -96,6 +100,29 @@ public sealed class Plugin : IDalamudPlugin
     internal bool IsInDuty => Condition[ConditionFlag.BoundByDuty]
                            || Condition[ConditionFlag.BoundByDuty56]
                            || Condition[ConditionFlag.WatchingCutscene];
+
+    /// <summary>
+    /// Opens the Timers window and closes it again, which is what makes the
+    /// client ask the server for venture timers. Saves walking the main menu
+    /// after a restart just to populate a list.
+    /// </summary>
+    internal unsafe void LoadTimers()
+    {
+        var agent = AgentContentsTimer.Instance();
+        if (agent is null || agent->IsAgentActive())
+            return;   // Already open: it is doing the job itself.
+
+        agent->Show();
+
+        // The request is out as soon as the window opens; the answer arrives on
+        // its own, so there is nothing to wait for but the frame.
+        Framework.RunOnTick(() =>
+        {
+            var closing = AgentContentsTimer.Instance();
+            if (closing is not null && closing->IsAgentActive())
+                closing->Hide();
+        }, TimeSpan.FromMilliseconds(250));
+    }
 
     /// <summary>Drag mode for the overlay, driven from the settings window.</summary>
     internal bool Repositioning

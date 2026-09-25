@@ -93,9 +93,11 @@ new packages private, so a first pull may need the visibility flipped.
 - **Nothing you can already see**, and nothing from last Tuesday: a venture that
   finished before the plugin synced is never pushed, and one missed by more than
   `BELL_STALE` is dropped
-- **The plugin syncs at the summoning bell** — the only place the game hands the
-  client real timers — and then every minute if something changed. A venture
-  assigned with the plugin off is one the server never hears about
+- **The plugin syncs when you close Timers or a summoning bell**, then every
+  minute if something changed. The client has to ask the server for venture
+  timers, and those windows are what asks — so after a game restart there is
+  nothing to read. The list becomes a button that opens and closes Timers for
+  you, which is all it takes
 - **Start notifications are opt-in.** You are at the bell when you assign one,
   so the news is the time it is back. A character's first sync never announces
   starts — installing with eight running should not push eight "started"

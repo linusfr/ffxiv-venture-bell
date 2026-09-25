@@ -32,7 +32,8 @@ internal sealed class VentureWindow : IDisposable
     // rewrite the config a hundred times for one drag.
     private Vector2  _lastPos;
     private bool     _seen;
-    private DateTime _movedAt = DateTime.MinValue;
+    private DateTime _movedAt    = DateTime.MinValue;
+    private DateTime _hurryUntil = DateTime.MinValue;
 
     // Rebuilt when the size changes, rather than stretching one bitmap font.
     private IFontHandle? _font;
@@ -67,7 +68,10 @@ internal sealed class VentureWindow : IDisposable
                   | ImGuiWindowFlags.NoFocusOnAppearing
                   | ImGuiWindowFlags.NoSavedSettings
                   | ImGuiWindowFlags.NoNav;
-        if (!Repositioning && Config.WindowLocked)
+        // With nothing to show, the list is a button instead — so it has to be
+        // clickable even when locked.
+        var asButton = _cached.Count == 0;
+        if (!Repositioning && Config.WindowLocked && !asButton)
             // Locked means the mouse goes through it to the game underneath.
             flags |= ImGuiWindowFlags.NoInputs | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoResize;
 
@@ -107,9 +111,19 @@ internal sealed class VentureWindow : IDisposable
         if (!Config.WindowPlaced || (dragged && !firstFrame))
             Remember(_lastPos);
 
-        if (_cached.Count == 0)
+        if (asButton)
         {
-            ImGui.TextColored(Muted, "No venture timers yet — visit a summoning bell.");
+            if (ImGui.Button("Load venture timers"))
+            {
+                _plugin.LoadTimers();
+                // Read more often for a moment: the answer lands in a few
+                // hundred milliseconds and waiting five seconds for a button to
+                // do something feels like it did not work.
+                _hurryUntil = DateTime.UtcNow.AddSeconds(5);
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Opens and closes the Timers window, which is what makes the game send them.");
+
             ImGui.End();
             Flush();
             return;
@@ -247,7 +261,8 @@ internal sealed class VentureWindow : IDisposable
 
     private void Refresh()
     {
-        if (DateTime.UtcNow - _lastRead < RefreshInterval)
+        var interval = DateTime.UtcNow < _hurryUntil ? TimeSpan.FromMilliseconds(250) : RefreshInterval;
+        if (DateTime.UtcNow - _lastRead < interval)
             return;
 
         _lastRead = DateTime.UtcNow;
