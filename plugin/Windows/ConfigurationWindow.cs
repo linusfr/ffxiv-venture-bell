@@ -86,6 +86,55 @@ public sealed class ConfigurationWindow : IDisposable
         ImGui.SameLine();
         ImGui.TextDisabled("Pushes one message now, so you know before a venture is due.");
 
+        Section("On-screen list");
+        Toggle("Show it", Config.ShowWindow, v => Config.ShowWindow = v);
+
+        ImGui.BeginDisabled(!Config.ShowWindow);
+
+        var condition = (int)Config.WindowCondition;
+        ImGui.SetNextItemWidth(-1);
+        if (ImGui.Combo("##condition", ref condition, "Always\0When a venture is back\0When all are back\0"))
+        {
+            Config.WindowCondition = (VentureWindowCondition)condition;
+            _plugin.SaveConfig();
+        }
+
+        Toggle("Name the venture, not just the time", Config.ShowVentureNames, v => Config.ShowVentureNames = v);
+        Toggle("Hide it in duties and cutscenes", Config.HideInDuty, v => Config.HideInDuty = v);
+
+        var alpha = Config.WindowBackgroundAlpha;
+        ImGui.SetNextItemWidth(-1);
+        if (ImGui.SliderFloat("##alpha", ref alpha, 0f, 1f, "background %.2f"))
+        {
+            Config.WindowBackgroundAlpha = alpha;
+            _plugin.SaveConfig();
+        }
+
+        // Locked is click-through, so the only way to move it is to say so.
+        if (_plugin.Repositioning)
+        {
+            if (ImGui.Button("Anchor it here"))
+            {
+                _plugin.Repositioning = false;
+                Config.WindowLocked   = true;
+                _plugin.SaveConfig();
+            }
+            ImGui.SameLine();
+            ImGui.TextColored(Warning, "Drag the list, then anchor it.");
+        }
+        else
+        {
+            if (ImGui.Button("Move it"))
+            {
+                _plugin.Repositioning = true;
+                Config.WindowLocked   = false;
+            }
+            ImGui.SameLine();
+            ImGui.TextDisabled("Locked, so clicks pass through to the game.");
+        }
+
+        ImGui.EndDisabled();
+
         Section("When to sync");
         ImGui.TextDisabled("  Always on closing the summoning bell, and this often otherwise.");
         var poll = Config.PollSeconds;

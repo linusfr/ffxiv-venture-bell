@@ -117,9 +117,26 @@ unset unless that is what you want.
 - **A failed notification is not retried forever.** Pushover gets three attempts,
   then it is logged as an error rather than re-sent all day
 
+On screen, a small list shows what each retainer is doing and when it is back:
+
+```text
+Vexie   Field Exploration VIII   2h07m
+Popsy   Field Exploration VIII   2h08m
+Coco                              idle
+```
+
+Minute resolution — a venture is hours away, and a ticking clock is something
+to watch rather than glance at. No title bar, no buttons, click-through while
+locked. It can be set to appear
+only when a venture is back, or only when all of them are, and it stays out of
+duties and cutscenes by default. "Move it" in the settings unlocks it for
+dragging; "Anchor it here" puts it back. Where you left it is kept in the
+plugin's own config rather than ImGui's, so it survives updates and reinstalls.
+
 `/venturebell` opens the settings, `/venturebell sync` sends now,
-`/venturebell status` reports the last attempt. The settings window checks the
-connection whenever it opens, and every button reports under "Last action".
+`/venturebell status` reports the last attempt, `/venturebell window` toggles the
+list. The settings window checks the connection whenever it opens, and every
+button reports under "Last action".
 
 ## API
 

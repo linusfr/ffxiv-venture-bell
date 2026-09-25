@@ -3,6 +3,14 @@ using Dalamud.Plugin.Services;
 
 namespace VentureBell;
 
+/// <summary>When the on-screen list is shown.</summary>
+public enum VentureWindowCondition
+{
+    Always,
+    AnyComplete,
+    AllComplete,
+}
+
 [System.Serializable]
 public sealed class Configuration : IPluginConfiguration
 {
@@ -34,6 +42,32 @@ public sealed class Configuration : IPluginConfiguration
     /// Seconds between checks for changed venture timers. The check is a memory read
     /// and a comparison; a request only goes out when something actually changed.
     public int PollSeconds { get; set; } = 60;
+
+    /// Show the on-screen list of what the retainers are doing.
+    public bool ShowWindow { get; set; } = true;
+
+    /// When that list is on screen.
+    public VentureWindowCondition WindowCondition { get; set; } = VentureWindowCondition.Always;
+
+    /// Where the list was last left. Kept here rather than in ImGui's own ini,
+    /// which a plugin reload or a fresh install does not carry over — the whole
+    /// reason the window used to come back in the middle of the screen.
+    public bool  WindowPlaced { get; set; }
+    public float WindowX      { get; set; }
+    public float WindowY      { get; set; }
+
+    /// Locked: the window will not move and the mouse passes through it to the
+    /// game underneath. Unlock from the settings to drag it.
+    public bool WindowLocked { get; set; } = true;
+
+    /// Background opacity. 0 is nothing but text over the game.
+    public float WindowBackgroundAlpha { get; set; } = 0.35f;
+
+    /// Name the venture next to the retainer, not just the time.
+    public bool ShowVentureNames { get; set; } = true;
+
+    /// Keep it out of the way while you are in a duty.
+    public bool HideInDuty { get; set; } = true;
 
     /// Log every sync, and what was in it, to the Dalamud log.
     public bool DebugMode { get; set; } = false;
