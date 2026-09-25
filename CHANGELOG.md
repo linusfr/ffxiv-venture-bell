@@ -1,10 +1,11 @@
-## 2.5.0 (2026-09-25)
+## 2.6.0 (2026-09-25)
 
 #### Feature
 
-* **plugin:** load the venture timers from the list itself (5b0cacee)
+* **plugin:** send retainers out from the summoning bell (bba2718e)
+* **plugin:** work out the best venture for each retainer (ba6cfb8c)
 
 #### Chores
 
-* pluginmaster 2.4.0 [skip ci] (6be5670c)
+* pluginmaster 2.5.0 [skip ci] (bf6e7877)
 
