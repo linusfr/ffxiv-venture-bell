@@ -1,10 +1,10 @@
-## 2.3.1 (2026-09-25)
+## 2.4.0 (2026-09-25)
 
-#### Bug Fixes
+#### Feature
 
-* **plugin:** make the on-screen list usable (50aa1770)
+* **plugin:** split the settings into two tabs (8a97e2cb)
 
 #### Chores
 
-* pluginmaster 2.3.0 [skip ci] (cbdfa40e)
+* pluginmaster 2.3.1 [skip ci] (ce081d8f)
 
