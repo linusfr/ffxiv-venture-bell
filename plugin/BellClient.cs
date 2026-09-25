@@ -107,6 +107,47 @@ internal sealed class BellClient : IDisposable
     }
 
     /// <summary>
+    /// Asks the server to send one real notification with these credentials.
+    /// The only way to find out a user key is a character out before a venture
+    /// is due — and it exercises the whole path, not just the typing.
+    /// </summary>
+    internal async Task<string?> TestAsync(Configuration config, string character, CancellationToken ct)
+    {
+        if (!TryBuildUrl(config.ServerUrl, "test", out var url))
+            return $"'{config.ServerUrl}' is not a valid http(s) address.";
+        if (!config.HasPushover)
+            return "Set both a Pushover application token and a user key first.";
+
+        var payload = new SyncPayload
+        {
+            Character = character,
+            Pushover  = new PushoverTarget { User = config.PushoverUser, Token = config.PushoverToken },
+        };
+
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, url);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", config.Token);
+            request.Content = new StringContent(JsonSerializer.Serialize(payload, Json), Encoding.UTF8, "application/json");
+
+            using var response = await _http.SendAsync(request, ct).ConfigureAwait(false);
+            if (response.IsSuccessStatusCode)
+                return null;
+
+            var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            return Shorten(body).Length > 0 ? Shorten(body) : response.ReasonPhrase ?? "the server refused the test.";
+        }
+        catch (TaskCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return "the server did not answer within ten seconds.";
+        }
+        catch (Exception ex)
+        {
+            return ex.Message;
+        }
+    }
+
+    /// <summary>
     /// Asks the server whether it is there and whether the token is right. It
     /// reads state rather than writing any, so pressing the button repeatedly
     /// changes nothing.

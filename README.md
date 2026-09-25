@@ -119,12 +119,15 @@ unset unless that is what you want.
 
 `/venturebell` opens the settings, `/venturebell sync` sends now,
 `/venturebell status` reports the last attempt. The settings window checks the
-connection whenever it opens.
+connection whenever it opens, and every button reports under "Last action".
 
 ## API
 
-`POST /sync` replaces what the server knows about one character. `GET /state`
-shows what it believes, `GET /healthz` is unauthenticated for probes.
+`POST /sync` replaces what the server knows about one character. `POST /test`
+sends one notification immediately with the credentials in the body and stores
+nothing — it is what the plugin's "Send a test notification" button calls, and it
+answers with Pushover's own error when a key is wrong. `GET /state` shows what
+the server believes, `GET /healthz` is unauthenticated for probes.
 
 ```jsonc
 // Authorization: Bearer <BELL_TOKEN>

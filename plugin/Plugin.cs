@@ -54,6 +54,9 @@ public sealed class Plugin : IDalamudPlugin
     /// <summary>Asks the server whether it is there, without sending anything.</summary>
     internal void CheckConnection() => _sync.CheckConnection();
 
+    /// <summary>Asks the server to push one notification with your credentials.</summary>
+    internal void SendTestNotification() => _sync.SendTestNotification();
+
     /// <summary>Sends the current timers whether or not they have changed.</summary>
     internal void SyncNow() => _sync.Check(force: true);
 

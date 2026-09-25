@@ -95,6 +95,21 @@ func (b *Bell) Snapshot() State {
 	return out
 }
 
+// SendTest delivers one message to the credentials supplied, so somebody can
+// find out whether they typed them correctly without waiting hours for a
+// venture. It touches no state.
+func (b *Bell) SendTest(ctx context.Context, target PushoverTarget) error {
+	n := Notification{
+		Title:   "Venture Bell",
+		Message: "Test notification — your credentials work.",
+		At:      b.now(),
+	}
+	if to, ok := b.send.(TargetedNotifier); ok {
+		return to.NotifyTo(ctx, n, target)
+	}
+	return b.send.Notify(ctx, n)
+}
+
 func (b *Bell) nudge() {
 	select {
 	case b.wake <- struct{}{}:

@@ -127,3 +127,59 @@ func TestSyncRejectsUnknownFields(t *testing.T) {
 		t.Errorf("status = %s, want 400", resp.Status)
 	}
 }
+
+func TestTestEndpointSendsWithTheSuppliedCredentials(t *testing.T) {
+	b, sent, _ := testBell(t, Config{Coalesce: time.Minute, Stale: time.Hour})
+	srv := httptest.NewServer(NewServer(b, Config{Token: "secret"}, slog.New(slog.DiscardHandler)))
+	defer srv.Close()
+
+	body := `{"character":"Y'shtola@Phoenix","retainers":[],"pushover":{"token":"app","user":"usr"}}`
+	resp := post(t, srv, "/test", "Bearer secret", body)
+	if resp != http.StatusNoContent {
+		t.Fatalf("POST /test = %d, want 204", resp)
+	}
+
+	got := sent.all()
+	if len(got) != 1 || got[0].Title != "Venture Bell" {
+		t.Fatalf("want one test notification, got %+v", got)
+	}
+	if target := sent.allTargets()[0]; target.User != "usr" || target.Token != "app" {
+		t.Errorf("sent with %+v, want the credentials from the body", target)
+	}
+
+	// It must not have touched the stored state.
+	if n := len(b.Snapshot().Characters); n != 0 {
+		t.Errorf("the test wrote %d characters into the state", n)
+	}
+}
+
+func TestTestEndpointNeedsBothHalves(t *testing.T) {
+	b, sent, _ := testBell(t, Config{Coalesce: time.Minute, Stale: time.Hour})
+	srv := httptest.NewServer(NewServer(b, Config{Token: "secret"}, slog.New(slog.DiscardHandler)))
+	defer srv.Close()
+
+	for _, body := range []string{
+		`{"character":"Y","retainers":[],"pushover":{"user":"usr"}}`,
+		`{"character":"Y","retainers":[]}`,
+	} {
+		if code := post(t, srv, "/test", "Bearer secret", body); code != http.StatusBadRequest {
+			t.Errorf("POST /test %s = %d, want 400", body, code)
+		}
+	}
+	if n := len(sent.all()); n != 0 {
+		t.Errorf("sent %d notifications with incomplete credentials", n)
+	}
+}
+
+func post(t *testing.T, srv *httptest.Server, path, auth, body string) int {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+path, strings.NewReader(body))
+	req.Header.Set("Authorization", auth)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatalf("POST %s: %v", path, err)
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode
+}

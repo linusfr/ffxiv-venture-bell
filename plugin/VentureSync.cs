@@ -107,7 +107,10 @@ internal sealed class VentureSync : IDisposable
             return;
         }
 
-        var fingerprint = snapshot.Value.Fingerprint;
+        // The credentials are part of the fingerprint: changing them in the
+        // settings has to reach the server, and without this it would wait for
+        // a venture to change first.
+        var fingerprint = snapshot.Value.Fingerprint + "|" + _config.PushoverUser + "|" + _config.PushoverToken;
         if (!force && fingerprint == _lastSent)
             return;
 
@@ -116,6 +119,8 @@ internal sealed class VentureSync : IDisposable
         if (Interlocked.CompareExchange(ref _inFlight, 1, 0) != 0)
             return;
 
+        if (force)
+            Status = "Sending…";
         _config.Debug(_log, $"VentureBell: sending {snapshot.Value.Retainers.Count} retainers for {snapshot.Value.Character}.");
         _ = SendAsync(snapshot.Value, fingerprint);
     }
@@ -133,8 +138,48 @@ internal sealed class VentureSync : IDisposable
             return;
         }
 
-        Link = LinkState.Checking;
+        Link   = LinkState.Checking;
+        Status = "Checking…";
         _ = CheckAsync();
+    }
+
+    /// <summary>Asks the server to send one notification with the configured
+    /// credentials, so the user can see whether they work.</summary>
+    internal void SendTestNotification()
+    {
+        if (!_config.IsConfigured)
+        {
+            Status = "Set a server address and a token first.";
+            return;
+        }
+
+        Status = "Sending a test notification…";
+        _ = TestAsync();
+    }
+
+    private async Task TestAsync()
+    {
+        try
+        {
+            var snapshot  = _reader.Read(_player);
+            var character = snapshot?.Character ?? "Venture Bell";
+
+            var error = await _client.TestAsync(_config, character, _shutdown.Token).ConfigureAwait(false);
+            if (error is null)
+            {
+                Link   = LinkState.Connected;
+                Status = $"Test sent at {DateTime.Now:HH:mm:ss} — check your phone.";
+            }
+            else
+            {
+                Status = $"Test failed — {error}";
+                _log.Warning("VentureBell: test notification failed — " + error);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Unloading mid-request.
+        }
     }
 
     private async Task CheckAsync()

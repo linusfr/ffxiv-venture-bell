@@ -78,6 +78,14 @@ public sealed class ConfigurationWindow : IDisposable
         if (!Config.HasPushover)
             ImGui.TextColored(Warning, "  Without both, the server has nowhere to send your notifications.");
 
+        ImGui.Spacing();
+        ImGui.BeginDisabled(!Config.HasPushover);
+        if (ImGui.Button("Send a test notification"))
+            _plugin.SendTestNotification();
+        ImGui.EndDisabled();
+        ImGui.SameLine();
+        ImGui.TextDisabled("Pushes one message now, so you know before a venture is due.");
+
         Section("When to sync");
         ImGui.TextDisabled("  Always on closing the summoning bell, and this often otherwise.");
         var poll = Config.PollSeconds;
@@ -95,13 +103,19 @@ public sealed class ConfigurationWindow : IDisposable
 
         ImGui.EndDisabled();
 
-        Section("Test");
+        Section("Actions");
         if (ImGui.Button("Send now"))
             _plugin.SyncNow();
         ImGui.SameLine();
         if (ImGui.Button("Check connection"))
             _plugin.CheckConnection();
-        ImGui.TextDisabled("  \"Send now\" pushes the current timers even if nothing changed.");
+        ImGui.TextDisabled("  \"Send now\" syncs the current timers even if nothing changed.");
+
+        // Every button on this window reports here, next to the buttons rather
+        // than beside the server address where the first version put it.
+        ImGui.Spacing();
+        ImGui.TextColored(Heading, "Last action");
+        ImGui.TextWrapped(_plugin.Status);
 
         ImGui.Spacing();
         ImGui.Separator();
@@ -136,9 +150,6 @@ public sealed class ConfigurationWindow : IDisposable
         ImGui.Dummy(new Vector2(radius * 2f, ImGui.GetTextLineHeight()));
         ImGui.SameLine();
         ImGui.TextColored(colour, label);
-
-        // The detail line carries the reason a red dot is red.
-        ImGui.TextDisabled("  " + _plugin.Status);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

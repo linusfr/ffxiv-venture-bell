@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -52,6 +53,40 @@ func NewServer(b *Bell, cfg Config, log *slog.Logger) http.Handler {
 		}
 
 		log.Info("synced", "character", req.Character, "retainers", len(req.Retainers))
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	// Sends one real notification with the credentials in the body. The only
+	// way to learn that a user key is a character out before a venture is due.
+	mux.Handle("POST /test", authed(cfg.Token, func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, maxBody)
+
+		var req SyncRequest
+		dec := json.NewDecoder(r.Body)
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&req); err != nil {
+			http.Error(w, "malformed body: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		if req.Pushover == nil || req.Pushover.User == "" || req.Pushover.Token == "" {
+			http.Error(w, "send both an application token and a user key to test them", http.StatusBadRequest)
+			return
+		}
+
+		// Shorter than the client's own timeout, so a retrying send comes back
+		// as a readable error rather than a hang.
+		ctx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
+		defer cancel()
+
+		if err := b.SendTest(ctx, *req.Pushover); err != nil {
+			log.Warn("test notification failed", "err", err)
+			// Pushover's own words: "application token is invalid" is the whole
+			// answer when it is.
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+
+		log.Info("test notification sent")
 		w.WriteHeader(http.StatusNoContent)
 	}))
 
