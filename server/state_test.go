@@ -12,17 +12,17 @@ func at(d time.Duration) int64 { return base.Add(d).Unix() }
 
 func TestMergeKeepsNotifiedForTheSameVenture(t *testing.T) {
 	s := NewState()
-	s.merge("Y'shtola@Phoenix", []Retainer{{Name: "Sultana", Venture: "Quick Exploration", DoneAt: at(time.Hour)}}, base)
+	s.merge("Y'shtola@Phoenix", []Retainer{{Name: "Sultana", Venture: "Quick Exploration", DoneAt: at(time.Hour)}}, nil, base)
 	s.Characters["Y'shtola@Phoenix"].Retainers[0].Notified = true
 
 	// Same completion time: the plugin is just re-syncing what we already sent.
-	s.merge("Y'shtola@Phoenix", []Retainer{{Name: "Sultana", Venture: "Quick Exploration", DoneAt: at(time.Hour)}}, base)
+	s.merge("Y'shtola@Phoenix", []Retainer{{Name: "Sultana", Venture: "Quick Exploration", DoneAt: at(time.Hour)}}, nil, base)
 	if !s.Characters["Y'shtola@Phoenix"].Retainers[0].Notified {
 		t.Fatal("a re-sync of the same venture re-armed a notification that was already sent")
 	}
 
 	// New completion time: the venture was reassigned and is due again.
-	s.merge("Y'shtola@Phoenix", []Retainer{{Name: "Sultana", Venture: "Hunting Exploration", DoneAt: at(3 * time.Hour)}}, base)
+	s.merge("Y'shtola@Phoenix", []Retainer{{Name: "Sultana", Venture: "Hunting Exploration", DoneAt: at(3 * time.Hour)}}, nil, base)
 	if s.Characters["Y'shtola@Phoenix"].Retainers[0].Notified {
 		t.Fatal("a reassigned venture stayed marked as notified")
 	}
@@ -33,7 +33,7 @@ func TestMergeSuppressesVenturesAlreadyCompleteOnFirstSight(t *testing.T) {
 	s.merge("Y'shtola@Phoenix", []Retainer{
 		{Name: "Sultana", DoneAt: at(-time.Minute)},
 		{Name: "Bubbles", DoneAt: at(time.Hour)},
-	}, base)
+	}, nil, base)
 
 	got := s.Characters["Y'shtola@Phoenix"].Retainers
 	if !got[0].Notified {
@@ -49,8 +49,8 @@ func TestMergeDropsRetainersAbsentFromTheSync(t *testing.T) {
 	s.merge("Y'shtola@Phoenix", []Retainer{
 		{Name: "Sultana", DoneAt: at(time.Hour)},
 		{Name: "Bubbles", DoneAt: at(time.Hour)},
-	}, base)
-	s.merge("Y'shtola@Phoenix", []Retainer{{Name: "Sultana", DoneAt: at(time.Hour)}}, base)
+	}, nil, base)
+	s.merge("Y'shtola@Phoenix", []Retainer{{Name: "Sultana", DoneAt: at(time.Hour)}}, nil, base)
 
 	if n := len(s.Characters["Y'shtola@Phoenix"].Retainers); n != 1 {
 		t.Fatalf("a dismissed retainer survived the sync: %d retainers left", n)
@@ -63,7 +63,7 @@ func TestDueCoalescesForward(t *testing.T) {
 		{Name: "Sultana", DoneAt: at(-time.Second)},     // due
 		{Name: "Bubbles", DoneAt: at(30 * time.Second)}, // inside the window
 		{Name: "Coco", DoneAt: at(10 * time.Minute)},    // well outside it
-	}, base.Add(-time.Hour))
+	}, nil, base.Add(-time.Hour))
 
 	got := s.due(base, 0, time.Minute, 6*time.Hour)
 	if len(got) != 2 {
@@ -78,7 +78,7 @@ func TestDueCoalescesForward(t *testing.T) {
 
 func TestDueHonoursLeadTime(t *testing.T) {
 	s := NewState()
-	s.merge("Y'shtola@Phoenix", []Retainer{{Name: "Sultana", DoneAt: at(4 * time.Minute)}}, base.Add(-time.Hour))
+	s.merge("Y'shtola@Phoenix", []Retainer{{Name: "Sultana", DoneAt: at(4 * time.Minute)}}, nil, base.Add(-time.Hour))
 
 	if got := s.due(base, 0, 0, 6*time.Hour); len(got) != 0 {
 		t.Fatalf("notified four minutes early with no lead time configured: %+v", got)
@@ -92,7 +92,7 @@ func TestDueDropsCompletionsMissedByMoreThanStale(t *testing.T) {
 	s := NewState()
 	// Known while pending, so merge does not suppress it; the server was then
 	// down for a day.
-	s.merge("Y'shtola@Phoenix", []Retainer{{Name: "Sultana", DoneAt: at(-24 * time.Hour)}}, base.Add(-48*time.Hour))
+	s.merge("Y'shtola@Phoenix", []Retainer{{Name: "Sultana", DoneAt: at(-24 * time.Hour)}}, nil, base.Add(-48*time.Hour))
 
 	if got := s.due(base, 0, 0, 6*time.Hour); len(got) != 0 {
 		t.Fatalf("sent a notification for a venture that finished a day ago: %+v", got)
@@ -108,7 +108,7 @@ func TestNextAtIsTheEarliestPendingCompletion(t *testing.T) {
 		{Name: "Coco", DoneAt: at(3 * time.Hour)},
 		{Name: "Sultana", DoneAt: at(time.Hour)},
 		{Name: "Idle"}, // no venture running
-	}, base)
+	}, nil, base)
 
 	got, ok := s.nextAt(10 * time.Minute)
 	if !ok {
@@ -127,7 +127,7 @@ func TestNextAtIsTheEarliestPendingCompletion(t *testing.T) {
 
 func TestDueSendsNothingEarlyOnItsOwn(t *testing.T) {
 	s := NewState()
-	s.merge("Y'shtola@Phoenix", []Retainer{{Name: "Sultana", DoneAt: at(30 * time.Second)}}, base.Add(-time.Hour))
+	s.merge("Y'shtola@Phoenix", []Retainer{{Name: "Sultana", DoneAt: at(30 * time.Second)}}, nil, base.Add(-time.Hour))
 
 	// Inside the coalescing window, but there is nothing due for it to ride
 	// along with — announcing it now would just be thirty seconds early.
@@ -152,7 +152,7 @@ func TestMergeReportsNewlyStartedVentures(t *testing.T) {
 	started := s.merge("Y'shtola@Phoenix", []Retainer{
 		{Name: "Sultana", Venture: "Quick Exploration", DoneAt: at(time.Hour)},
 		{Name: "Bubbles"},
-	}, base)
+	}, nil, base)
 	if len(started) != 0 {
 		t.Fatalf("the first sync announced %d ventures as newly started: %+v", len(started), started)
 	}
@@ -162,7 +162,7 @@ func TestMergeReportsNewlyStartedVentures(t *testing.T) {
 	started = s.merge("Y'shtola@Phoenix", []Retainer{
 		{Name: "Sultana", Venture: "Quick Exploration", DoneAt: at(time.Hour)},
 		{Name: "Bubbles", Venture: "Field Exploration", DoneAt: at(2 * time.Hour)},
-	}, base)
+	}, nil, base)
 	if len(started) != 1 || started[0].Retainer != "Bubbles" {
 		t.Fatalf("want only Bubbles reported as started, got %+v", started)
 	}
@@ -171,14 +171,14 @@ func TestMergeReportsNewlyStartedVentures(t *testing.T) {
 	if again := s.merge("Y'shtola@Phoenix", []Retainer{
 		{Name: "Sultana", Venture: "Quick Exploration", DoneAt: at(time.Hour)},
 		{Name: "Bubbles", Venture: "Field Exploration", DoneAt: at(2 * time.Hour)},
-	}, base); len(again) != 0 {
+	}, nil, base); len(again) != 0 {
 		t.Fatalf("an unchanged re-sync reported %+v", again)
 	}
 
 	// A completion that has already passed is not a start either.
 	if done := s.merge("Y'shtola@Phoenix", []Retainer{
 		{Name: "Sultana", Venture: "Quick Exploration", DoneAt: at(-time.Minute)},
-	}, base); len(done) != 0 {
+	}, nil, base); len(done) != 0 {
 		t.Fatalf("a venture that had already finished was reported as started: %+v", done)
 	}
 }

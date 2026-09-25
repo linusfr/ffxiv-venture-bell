@@ -12,6 +12,19 @@ type Retainer struct {
 	DoneAt  int64  `json:"done_at"` // 0 = no venture running
 }
 
+// PushoverTarget is where one character's notifications go. It lets a single
+// server serve several people: each plugin sends its own user key, and the
+// application token stays the server's unless a client brings its own.
+//
+// Absent means "use whatever the server is configured with", which is the
+// single-user case and needs no plugin configuration at all.
+type PushoverTarget struct {
+	User  string `json:"user"`
+	Token string `json:"token,omitempty"`
+}
+
+func (t PushoverTarget) IsZero() bool { return t.User == "" }
+
 // SyncRequest is the plugin's whole view of one character's retainers. It is a
 // state replacement, not an event: a retainer missing from the list is gone,
 // and a changed DoneAt is a reassigned venture. Nothing here needs the server
@@ -19,6 +32,9 @@ type Retainer struct {
 type SyncRequest struct {
 	Character string     `json:"character"`
 	Retainers []Retainer `json:"retainers"`
+	// Where this character's notifications should go. Sent on every sync, so
+	// clearing it in the plugin clears it here too.
+	Pushover *PushoverTarget `json:"pushover,omitempty"`
 }
 
 // entry is a Retainer plus what the server knows about it.
@@ -35,6 +51,9 @@ type entry struct {
 type character struct {
 	Retainers []entry `json:"retainers"`
 	SyncedAt  int64   `json:"synced_at"`
+	// Replaced wholesale on every sync, like the retainer list: the plugin is
+	// the source of truth, and a key removed there is removed here.
+	Pushover *PushoverTarget `json:"pushover,omitempty"`
 }
 
 type State struct {
@@ -43,6 +62,15 @@ type State struct {
 
 func NewState() *State {
 	return &State{Characters: map[string]*character{}}
+}
+
+// Target is where a character's notifications go, or the zero value for the
+// server's own configuration.
+func (s *State) Target(character string) PushoverTarget {
+	if c, ok := s.Characters[character]; ok && c.Pushover != nil {
+		return *c.Pushover
+	}
+	return PushoverTarget{}
 }
 
 // Completion is one venture worth notifying about.
@@ -59,7 +87,7 @@ type Completion struct {
 // The first sync for a character reports nothing: installing the plugin with
 // eight ventures already running would otherwise announce all eight as if they
 // had just been assigned. That first sight is a silent baseline.
-func (s *State) merge(name string, in []Retainer, now time.Time) []Completion {
+func (s *State) merge(name string, in []Retainer, target *PushoverTarget, now time.Time) []Completion {
 	prev := map[string]entry{}
 	_, known := s.Characters[name]
 	if c, ok := s.Characters[name]; ok {
@@ -93,7 +121,7 @@ func (s *State) merge(name string, in []Retainer, now time.Time) []Completion {
 		out = append(out, e)
 	}
 
-	s.Characters[name] = &character{Retainers: out, SyncedAt: now.Unix()}
+	s.Characters[name] = &character{Retainers: out, SyncedAt: now.Unix(), Pushover: target}
 	return started
 }
 
@@ -160,6 +188,18 @@ func (s *State) anyDueAt(now time.Time, lead, stale time.Duration) bool {
 		}
 	}
 	return false
+}
+
+// group splits a batch by where it has to go. Characters that share a
+// destination — the usual case of one person, or several who left the plugin's
+// notification fields empty — stay in one notification.
+func (s *State) group(items []Completion) map[PushoverTarget][]Completion {
+	out := map[PushoverTarget][]Completion{}
+	for _, it := range items {
+		target := s.Target(it.Character)
+		out[target] = append(out[target], it)
+	}
+	return out
 }
 
 // nextAt is when the scheduler should wake up, if there is anything to wake for.

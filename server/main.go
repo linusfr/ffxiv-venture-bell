@@ -61,7 +61,8 @@ func run(log *slog.Logger) error {
 	errc := make(chan error, 1)
 	go func() {
 		log.Info("listening", "addr", cfg.Addr, "notifier", send.Name(),
-			"lead", cfg.Lead.String(), "coalesce", cfg.Coalesce.String(), "state", cfg.StatePath)
+			"lead", cfg.Lead.String(), "coalesce", cfg.Coalesce.String(),
+			"notifyStart", cfg.NotifyStart, "state", cfg.StatePath)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errc <- err
 		}
@@ -82,29 +83,16 @@ func run(log *slog.Logger) error {
 func buildNotifier(cfg Config, log *slog.Logger) Notifier {
 	client := &http.Client{Timeout: 10 * time.Second}
 
-	var targets multiNotifier
-	if cfg.Pushover.Token != "" {
-		targets = append(targets, newPushover(cfg.Pushover, client))
-	}
+	// Pushover is always available: it needs no server-side configuration,
+	// because every message carries the credentials the plugin registered.
+	targets := multiNotifier{newPushover(cfg.Pushover, client)}
 	if cfg.WebhookURL != "" {
+		// The operator's own relay. It has no notion of a recipient, so it sees
+		// everything this server handles — worth knowing before pointing it at
+		// a shared channel.
 		targets = append(targets, &webhookNotifier{url: cfg.WebhookURL, client: client})
 	}
-	if len(targets) == 0 {
-		// Useful on the first run: point the plugin at it, watch the log, and
-		// only then go and make a Pushover application.
-		log.Warn("no notifier configured — completions will only be logged")
-		return logNotifier{log}
-	}
 	return targets
-}
-
-type logNotifier struct{ log *slog.Logger }
-
-func (l logNotifier) Name() string { return "log" }
-
-func (l logNotifier) Notify(_ context.Context, n Notification) error {
-	l.log.Info("would notify", "title", n.Title, "message", n.Message)
-	return nil
 }
 
 func logLevel() slog.Level {

@@ -48,7 +48,11 @@ public sealed class Plugin : IDalamudPlugin
         Log.Info("VentureBell: Plugin loaded.");
     }
 
-    internal string Status => _sync.Status;
+    internal string    Status => _sync.Status;
+    internal LinkState Link   => _sync.Link;
+
+    /// <summary>Asks the server whether it is there, without sending anything.</summary>
+    internal void CheckConnection() => _sync.CheckConnection();
 
     /// <summary>Sends the current timers whether or not they have changed.</summary>
     internal void SyncNow() => _sync.Check(force: true);

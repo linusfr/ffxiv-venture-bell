@@ -10,20 +10,18 @@ imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
-# BELL_TOKEN, and the Pushover credentials if you use them.
+# BELL_TOKEN — the only secret this server has. Pushover credentials live in
+# each plugin, not here.
 #
 # existingSecret is the way in: create the secret yourself, out of band, and
-# name it here. Keys are read as-is, so it must carry BELL_TOKEN and, for
-# Pushover, PUSHOVER_TOKEN and PUSHOVER_USER.
+# name it here. Keys are read as-is, so it must carry BELL_TOKEN.
 existingSecret: ""
 
-# The fallback for people who are not running a secret manager: values landing
+# The fallback for people who are not running a secret manager: a value landing
 # in a Secret the chart creates. It ends up in your values file and in Helm's
 # release history, so prefer existingSecret.
 secret:
   bellToken: ""
-  pushoverToken: ""
-  pushoverUser: ""
 
 # Everything that is not a credential.
 config:
@@ -40,10 +38,8 @@ config:
   # Times in start notifications are rendered in this zone. The image carries
   # its own copy of the tz database, so any IANA name works.
   timezone: Europe/Berlin
-  pushover:
-    priority: ""
-    device: ""
-    sound: ""
+  # Pushover priority for every message: -2…1.
+  pushoverPriority: ""
   debug: false
 
 # The state file is the countdown. Without a volume it lives in the pod and a

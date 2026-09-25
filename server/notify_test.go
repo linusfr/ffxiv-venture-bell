@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -42,27 +44,51 @@ func TestComposeNamesTheCharacterOnlyWhenThereIsMoreThanOne(t *testing.T) {
 	}
 }
 
-func TestPushoverSendsTheCompletionTimeNotTheSendTime(t *testing.T) {
-	var got string
+func TestPushoverSendsTheClientsCredentials(t *testing.T) {
+	var got url.Values
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
-		got = r.Form.Encode()
+		got = r.Form
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
 
 	done := time.Date(2026, 9, 24, 12, 0, 0, 0, time.UTC)
-	p := newPushover(PushoverConfig{Token: "app", User: "usr", Priority: -1}, srv.Client())
+	p := newPushover(PushoverConfig{Priority: -1}, srv.Client())
 	p.api = srv.URL
 
-	err := p.Notify(context.Background(), Notification{Title: "Venture complete", Message: "Sultana", At: done})
+	err := p.NotifyTo(context.Background(),
+		Notification{Title: "Venture complete", Message: "Sultana", At: done},
+		PushoverTarget{User: "client-user", Token: "client-app"})
 	if err != nil {
-		t.Fatalf("Notify: %v", err)
+		t.Fatalf("NotifyTo: %v", err)
 	}
-	for _, want := range []string{"token=app", "user=usr", "priority=-1", "timestamp=1790251200"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("form %q is missing %q", got, want)
+
+	// The server contributes no identity of its own: both halves are the
+	// client's, so a shared server never sends on the operator's account.
+	for k, want := range map[string]string{
+		"token": "client-app",
+		"user":  "client-user",
+		// The completion time, not the send time.
+		"timestamp": "1790251200",
+		"priority":  "-1",
+	} {
+		if got.Get(k) != want {
+			t.Errorf("%s = %q, want %q", k, got.Get(k), want)
 		}
+	}
+}
+
+func TestPushoverRefusesASendWithNoCredentials(t *testing.T) {
+	p := newPushover(PushoverConfig{}, http.DefaultClient)
+	err := p.NotifyTo(context.Background(), Notification{At: time.Now()}, PushoverTarget{})
+	if err == nil {
+		t.Fatal("a send with no credentials from the plugin reported success")
+	}
+	// Permanent: no number of retries will conjure a user key.
+	var perm permanent
+	if !errors.As(err, &perm) {
+		t.Errorf("error = %v, want a permanent one", err)
 	}
 }
 
@@ -75,10 +101,10 @@ func TestPushoverDoesNotRetryARejectedMessage(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := newPushover(PushoverConfig{Token: "bad", User: "usr"}, srv.Client())
+	p := newPushover(PushoverConfig{}, srv.Client())
 	p.api = srv.URL
 
-	err := p.Notify(context.Background(), Notification{At: time.Now()})
+	err := p.NotifyTo(context.Background(), Notification{At: time.Now()}, PushoverTarget{User: "u", Token: "bad"})
 	if err == nil {
 		t.Fatal("a rejected message reported success")
 	}
@@ -104,10 +130,10 @@ func TestPushoverRetriesAServerError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := newPushover(PushoverConfig{Token: "app", User: "usr"}, srv.Client())
+	p := newPushover(PushoverConfig{}, srv.Client())
 	p.api = srv.URL
 
-	if err := p.Notify(context.Background(), Notification{At: time.Now()}); err != nil {
+	if err := p.NotifyTo(context.Background(), Notification{At: time.Now()}, PushoverTarget{User: "u", Token: "t"}); err != nil {
 		t.Fatalf("gave up on a transient failure: %v", err)
 	}
 	if attempts != 3 {
@@ -142,6 +168,40 @@ func TestWebhookPostsTheNotificationAsJSON(t *testing.T) {
 	}
 }
 
+func TestMultiNotifierSkipsPushoverButStillRelaysTheWebhook(t *testing.T) {
+	var pushoverCalls, webhookCalls int
+	push := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pushoverCalls++
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer push.Close()
+	hook := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		webhookCalls++
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer hook.Close()
+
+	p := newPushover(PushoverConfig{}, push.Client())
+	p.api = push.URL
+	m := multiNotifier{p, &webhookNotifier{url: hook.URL, client: hook.Client()}}
+
+	// A plugin with no credentials yet: nothing to send to, but the operator's
+	// relay still sees it.
+	if err := m.NotifyTo(context.Background(), Notification{At: time.Now()}, PushoverTarget{}); err != nil {
+		t.Fatalf("NotifyTo: %v", err)
+	}
+	if pushoverCalls != 0 {
+		t.Errorf("called Pushover %d times with nothing to send to", pushoverCalls)
+	}
+	if webhookCalls != 1 {
+		t.Errorf("webhook calls = %d, want 1", webhookCalls)
+	}
+
+	if m.Name() != "pushover+webhook" {
+		t.Errorf("Name() = %q", m.Name())
+	}
+}
+
 func TestMultiNotifierReportsEveryFailure(t *testing.T) {
 	defer shortRetries(t)()
 
@@ -154,16 +214,13 @@ func TestMultiNotifierReportsEveryFailure(t *testing.T) {
 	}))
 	defer good.Close()
 
-	p := newPushover(PushoverConfig{Token: "app", User: "usr"}, bad.Client())
+	p := newPushover(PushoverConfig{}, bad.Client())
 	p.api = bad.URL
 	m := multiNotifier{p, &webhookNotifier{url: good.URL, client: good.Client()}}
 
-	err := m.Notify(context.Background(), Notification{At: time.Now()})
+	err := m.NotifyTo(context.Background(), Notification{At: time.Now()}, PushoverTarget{User: "u", Token: "t"})
 	if err == nil || !strings.Contains(err.Error(), "pushover") {
 		t.Fatalf("a failing target was not reported: %v", err)
-	}
-	if m.Name() != "pushover+webhook" {
-		t.Errorf("Name() = %q", m.Name())
 	}
 }
 

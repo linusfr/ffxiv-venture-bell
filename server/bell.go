@@ -23,7 +23,14 @@ type Bell struct {
 	wake chan struct{}
 	// Ventures that have just been assigned, handed to Run so the plugin's
 	// request is not left waiting on Pushover.
-	started chan []Completion
+	started chan startedBatch
+}
+
+// startedBatch is one sync's worth of new ventures, which all belong to one
+// character and therefore to one destination.
+type startedBatch struct {
+	target PushoverTarget
+	items  []Completion
 }
 
 func NewBell(cfg Config, store *Store, state *State, send Notifier, log *slog.Logger) *Bell {
@@ -37,20 +44,21 @@ func NewBell(cfg Config, store *Store, state *State, send Notifier, log *slog.Lo
 		// Buffered: a sync that lands while the scheduler is mid-tick should
 		// leave a note, not block on it.
 		wake:    make(chan struct{}, 1),
-		started: make(chan []Completion, 8),
+		started: make(chan startedBatch, 8),
 	}
 }
 
 // Sync records one character's retainers and re-arms the timer.
 func (b *Bell) Sync(req SyncRequest) error {
 	b.mu.Lock()
-	started := b.state.merge(req.Character, req.Retainers, b.now())
+	started := b.state.merge(req.Character, req.Retainers, req.Pushover, b.now())
+	target := b.state.Target(req.Character)
 	err := b.store.Save(b.state)
 	b.mu.Unlock()
 
 	if b.cfg.NotifyStart && len(started) > 0 {
 		select {
-		case b.started <- started:
+		case b.started <- startedBatch{target: target, items: started}:
 		default:
 			// Eight batches already queued means notifications are not going
 			// out at all; dropping one is better than growing a backlog.
@@ -75,6 +83,13 @@ func (b *Bell) Snapshot() State {
 	for name, c := range b.state.Characters {
 		copied := *c
 		copied.Retainers = append([]entry(nil), c.Retainers...)
+		// Redacted: everyone syncing to this server presents the same
+		// BELL_TOKEN, so /state must not hand one person another's Pushover
+		// keys. Whether a character has its own destination is still visible,
+		// because that is the useful part when a notification does not arrive.
+		if c.Pushover != nil {
+			copied.Pushover = &PushoverTarget{User: "(set)"}
+		}
 		out.Characters[name] = &copied
 	}
 	return out
@@ -109,12 +124,12 @@ func (b *Bell) Run(ctx context.Context) {
 			}
 			return
 		case <-b.wake:
-		case items := <-b.started:
-			title, message := composeStarted(items)
-			for _, it := range items {
+		case batch := <-b.started:
+			title, message := composeStarted(batch.items)
+			for _, it := range batch.items {
 				b.log.Info("venture started", "character", it.Character, "retainer", it.Retainer, "venture", it.Venture)
 			}
-			b.deliver(ctx, Notification{Title: title, Message: message, At: b.now(), Items: items})
+			b.deliver(ctx, Notification{Title: title, Message: message, At: b.now(), Items: batch.items}, batch.target)
 		case <-fire:
 		}
 		if timer != nil {
@@ -135,6 +150,9 @@ func (b *Bell) nextAt() (time.Time, bool) {
 func (b *Bell) tick(ctx context.Context) {
 	b.mu.Lock()
 	items := b.state.due(b.now(), b.cfg.Lead, b.cfg.Coalesce, b.cfg.Stale)
+	// Grouped under the same lock that produced them, so a sync landing
+	// mid-tick cannot move a completion's destination out from under it.
+	groups := b.state.group(items)
 	var saveErr error
 	if len(items) > 0 {
 		saveErr = b.store.Save(b.state)
@@ -144,24 +162,35 @@ func (b *Bell) tick(ctx context.Context) {
 	if saveErr != nil {
 		b.log.Error("could not persist state", "err", saveErr)
 	}
-	if len(items) == 0 {
-		return
-	}
 
-	title, message := compose(items)
-	at := time.Unix(items[0].DoneAt, 0)
-	for _, it := range items {
-		if t := time.Unix(it.DoneAt, 0); t.Before(at) {
-			at = t
+	for target, batch := range groups {
+		title, message := compose(batch)
+		at := time.Unix(batch[0].DoneAt, 0)
+		for _, it := range batch {
+			if t := time.Unix(it.DoneAt, 0); t.Before(at) {
+				at = t
+			}
+			b.log.Info("venture complete", "character", it.Character, "retainer", it.Retainer, "venture", it.Venture)
 		}
-		b.log.Info("venture complete", "character", it.Character, "retainer", it.Retainer, "venture", it.Venture)
+		b.deliver(ctx, Notification{Title: title, Message: message, At: at, Items: batch}, target)
 	}
-
-	b.deliver(ctx, Notification{Title: title, Message: message, At: at, Items: items})
 }
 
-func (b *Bell) deliver(ctx context.Context, n Notification) {
-	if err := b.send.Notify(ctx, n); err != nil {
+func (b *Bell) deliver(ctx context.Context, n Notification, target PushoverTarget) {
+	if target.IsZero() {
+		// Not an error: a plugin that has not been given Pushover credentials
+		// yet is an ordinary state, and this is where someone finds out.
+		b.log.Warn("nothing to notify with — no Pushover credentials from the plugin",
+			"character", n.Items[0].Character, "title", n.Title)
+	}
+
+	var err error
+	if to, ok := b.send.(TargetedNotifier); ok {
+		err = to.NotifyTo(ctx, n, target)
+	} else {
+		err = b.send.Notify(ctx, n)
+	}
+	if err != nil {
 		// Deliberately loud: the notification is gone, and the only place that
 		// fact can still surface is the log.
 		b.log.Error("notification not delivered", "err", err, "title", n.Title, "count", len(n.Items))

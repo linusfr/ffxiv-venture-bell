@@ -27,6 +27,14 @@ type Notifier interface {
 	Notify(ctx context.Context, n Notification) error
 }
 
+// TargetedNotifier delivers to an account the client supplied rather than the
+// one in the server's environment. Notifiers that have no notion of a
+// recipient — a webhook relay — simply do not implement it and keep receiving
+// everything.
+type TargetedNotifier interface {
+	NotifyTo(ctx context.Context, n Notification, target PushoverTarget) error
+}
+
 // compose turns a batch of completions into something worth reading on a lock
 // screen: what came back, and what it was doing.
 func compose(items []Completion) (title, message string) {
@@ -120,10 +128,25 @@ func (m multiNotifier) Name() string {
 }
 
 func (m multiNotifier) Notify(ctx context.Context, n Notification) error {
+	return m.NotifyTo(ctx, n, PushoverTarget{})
+}
+
+func (m multiNotifier) NotifyTo(ctx context.Context, n Notification, target PushoverTarget) error {
 	var errs []error
-	for _, target := range m {
-		if err := target.Notify(ctx, n); err != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", target.Name(), err))
+	for _, to := range m {
+		var err error
+		if t, ok := to.(TargetedNotifier); ok {
+			if target.IsZero() {
+				// Nowhere to send: the plugin has not been given credentials.
+				// The webhook, which has no notion of a recipient, still runs.
+				continue
+			}
+			err = t.NotifyTo(ctx, n, target)
+		} else {
+			err = to.Notify(ctx, n)
+		}
+		if err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", to.Name(), err))
 		}
 	}
 	return errors.Join(errs...)
@@ -134,33 +157,38 @@ func (m multiNotifier) Notify(ctx context.Context, n Notification) error {
 const pushoverAPI = "https://api.pushover.net/1/messages.json"
 
 type pushoverNotifier struct {
-	cfg    PushoverConfig
-	client *http.Client
-	api    string
+	priority int
+	client   *http.Client
+	api      string
 }
 
 func newPushover(cfg PushoverConfig, client *http.Client) *pushoverNotifier {
-	return &pushoverNotifier{cfg: cfg, client: client, api: pushoverAPI}
+	return &pushoverNotifier{priority: cfg.Priority, client: client, api: pushoverAPI}
 }
 
 func (p *pushoverNotifier) Name() string { return "pushover" }
 
 func (p *pushoverNotifier) Notify(ctx context.Context, n Notification) error {
+	return p.NotifyTo(ctx, n, PushoverTarget{})
+}
+
+// NotifyTo sends to the account the client supplied. The application token
+// stays the server's unless the client brought its own, which is the normal
+// Pushover arrangement: one application, many users.
+func (p *pushoverNotifier) NotifyTo(ctx context.Context, n Notification, target PushoverTarget) error {
+	if target.IsZero() {
+		return permanent{errors.New("no Pushover credentials — set them in the plugin's settings")}
+	}
+
 	form := url.Values{
-		"token":   {p.cfg.Token},
-		"user":    {p.cfg.User},
+		"token":   {target.Token},
+		"user":    {target.User},
 		"title":   {n.Title},
 		"message": {n.Message},
 		// The completion time, not the send time. With a lead time set, those
 		// differ, and the phone should show when the venture is actually up.
 		"timestamp": {strconv.FormatInt(n.At.Unix(), 10)},
-		"priority":  {strconv.Itoa(p.cfg.Priority)},
-	}
-	if p.cfg.Device != "" {
-		form.Set("device", p.cfg.Device)
-	}
-	if p.cfg.Sound != "" {
-		form.Set("sound", p.cfg.Sound)
+		"priority":  {strconv.Itoa(p.priority)},
 	}
 
 	return retry(ctx, func(ctx context.Context) error {

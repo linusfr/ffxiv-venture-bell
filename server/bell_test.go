@@ -15,16 +15,22 @@ import (
 )
 
 type captureNotifier struct {
-	mu   sync.Mutex
-	sent []Notification
+	mu      sync.Mutex
+	sent    []Notification
+	targets []PushoverTarget
 }
 
 func (c *captureNotifier) Name() string { return "capture" }
 
-func (c *captureNotifier) Notify(_ context.Context, n Notification) error {
+func (c *captureNotifier) Notify(ctx context.Context, n Notification) error {
+	return c.NotifyTo(ctx, n, PushoverTarget{})
+}
+
+func (c *captureNotifier) NotifyTo(_ context.Context, n Notification, target PushoverTarget) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.sent = append(c.sent, n)
+	c.targets = append(c.targets, target)
 	return nil
 }
 
@@ -32,6 +38,12 @@ func (c *captureNotifier) all() []Notification {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return append([]Notification(nil), c.sent...)
+}
+
+func (c *captureNotifier) allTargets() []PushoverTarget {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]PushoverTarget(nil), c.targets...)
 }
 
 func testBell(t *testing.T, cfg Config) (*Bell, *captureNotifier, *Store) {
@@ -280,5 +292,81 @@ func TestBellStaysQuietAboutStartsUnlessAskedTo(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 	if n := len(sent.all()); n != 0 {
 		t.Fatalf("sent %d start notifications with BELL_NOTIFY_START off", n)
+	}
+}
+
+func TestBellSendsEachCharacterToItsOwnAccount(t *testing.T) {
+	b, sent, _ := testBell(t, Config{Coalesce: time.Minute, Stale: 6 * time.Hour})
+	b.now = func() time.Time { return base.Add(-time.Hour) }
+
+	// One character's plugin registered Pushover credentials; the other's has
+	// not, so there is nowhere to send its completions.
+	if err := b.Sync(SyncRequest{
+		Character: "Y'shtola@Phoenix",
+		Retainers: []Retainer{{Name: "Sultana", Venture: "Quick Exploration", DoneAt: at(0)}},
+		Pushover:  &PushoverTarget{User: "friend-key", Token: "friend-app"},
+	}); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	if err := b.Sync(SyncRequest{
+		Character: "Alphinaud@Omega",
+		Retainers: []Retainer{{Name: "Tataru", Venture: "Field Exploration", DoneAt: at(0)}},
+	}); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	b.now = func() time.Time { return base }
+	b.tick(context.Background())
+
+	got, targets := sent.all(), sent.allTargets()
+	if len(got) != 2 {
+		t.Fatalf("want one notification per destination, got %d: %+v", len(got), got)
+	}
+	// Two destinations means two messages, each naming only its own retainer.
+	byUser := map[string]Notification{}
+	for i, n := range got {
+		byUser[targets[i].User] = n
+	}
+	friend, ok := byUser["friend-key"]
+	if !ok {
+		t.Fatalf("nothing was sent to the client-supplied account: %+v", targets)
+	}
+	if !strings.Contains(friend.Message, "Sultana") || strings.Contains(friend.Message, "Tataru") {
+		t.Errorf("the friend's notification carried someone else's retainers: %q", friend.Message)
+	}
+	// The batch with no credentials is still composed and handed on, so the
+	// webhook relay sees it and the log can say what was missed; it is
+	// multiNotifier that declines to call Pushover with nothing to send to.
+	orphan, ok := byUser[""]
+	if !ok {
+		t.Fatalf("the character without credentials produced no batch at all: %+v", targets)
+	}
+	if !strings.Contains(orphan.Message, "Tataru") || strings.Contains(orphan.Message, "Sultana") {
+		t.Errorf("batches were not kept apart: %q", orphan.Message)
+	}
+}
+
+func TestStateEndpointRedactsOtherPeoplesKeys(t *testing.T) {
+	b, _, _ := testBell(t, Config{Token: "secret", Coalesce: time.Minute, Stale: time.Hour})
+	b.now = func() time.Time { return base }
+	if err := b.Sync(SyncRequest{
+		Character: "Y'shtola@Phoenix",
+		Retainers: []Retainer{{Name: "Sultana", DoneAt: at(time.Hour)}},
+		Pushover:  &PushoverTarget{User: "friend-key", Token: "friend-app"},
+	}); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	// Everyone syncing here shares one BELL_TOKEN, so /state must not be a way
+	// to read the other players' keys.
+	body, err := json.Marshal(b.Snapshot())
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if strings.Contains(string(body), "friend-key") || strings.Contains(string(body), "friend-app") {
+		t.Fatalf("/state exposed a client's Pushover keys: %s", body)
+	}
+	if !strings.Contains(string(body), "(set)") {
+		t.Errorf("/state does not show that the character has its own destination: %s", body)
 	}
 }

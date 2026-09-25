@@ -33,19 +33,26 @@ Add to Dalamud's custom plugin repositories (`/xlsettings` → Experimental):
 https://raw.githubusercontent.com/linusfr/ffxiv-venture-bell/main/pluginmaster.json
 ```
 
-Run the server (below), then put its address and token into `/venturebell`.
-Until both are set the plugin sends nothing anywhere.
+Run the server (below), then put its address and token into `/venturebell`,
+which shows a green dot once the server answers. Then add your Pushover
+credentials, and you are done.
 
-For Pushover you need your own application token — the quota is per
-application, so a shipped one would be everyone's quota.
-[Register one](https://pushover.net/apps/build), then set `PUSHOVER_TOKEN` and
-`PUSHOVER_USER`. Priority defaults to `-1`: delivered, silent, and Pushover's
-own quiet hours already work.
+**The server holds no Pushover account.** Both halves — the application token
+and your user key — live in the plugin and travel with each sync. That is what
+makes a shared server safe in both directions: your friends' ventures can never
+arrive on the operator's phone, and nobody's notifications come out of anybody
+else's quota. Point a friend at your server and all they need is the URL, the
+`BELL_TOKEN`, and their own Pushover setup.
+
+[Register an application](https://pushover.net/apps/build) — any name, and its
+icon is what shows on your lock screen — then paste its API token and your user
+key (top right of the dashboard) into the plugin. Priority defaults to `-1`:
+delivered, silent, and Pushover's own quiet hours already work.
 
 ## Running the server
 
 ```sh
-BELL_TOKEN=$(openssl rand -hex 24) PUSHOVER_TOKEN=… PUSHOVER_USER=… ./venturebell
+BELL_TOKEN=$(openssl rand -hex 24) ./venturebell
 ```
 
 Docker: `ghcr.io/linusfr/ffxiv-venture-bell`, state on `/data`. The image is
@@ -69,21 +76,21 @@ so the first pull may need the visibility flipped.
 
 | Variable | Default | |
 |---|---|---|
-| `BELL_TOKEN` | *required* | Shared secret the plugin sends as `Authorization: Bearer …` |
+| `BELL_TOKEN` | *required* | Shared secret the plugin sends as `Authorization: Bearer …`. Everyone syncing to one server presents the same one, so hand it only to people you would also hand your Pushover quota |
 | `BELL_ADDR` | `127.0.0.1:8770` | Listen address; the image overrides it to `0.0.0.0:8770` |
 | `BELL_STATE` | `state.json` | Where the timers live; `/data/state.json` in the image |
 | `BELL_LEAD` | `0` | Notify this long *before* completion, e.g. `5m` |
 | `BELL_COALESCE` | `1m` | Completions this close together share one notification |
 | `BELL_STALE` | `6h` | Missed by more than this and it is dropped, not sent late |
-| `PUSHOVER_TOKEN`, `PUSHOVER_USER` | — | Your application token and user key |
-| `PUSHOVER_PRIORITY`, `_DEVICE`, `_SOUND` | `-1` | Priority `-2`…`1`; 2 needs an acknowledgement flow |
+| `PUSHOVER_PRIORITY` | `-1` | Priority `-2`…`1` for every message this server sends; 2 needs an acknowledgement flow |
 | `BELL_NOTIFY_START` | unset | Any value also announces ventures as they are assigned, with the time they are back |
 | `TZ` | UTC | Zone for those times. The image carries its own tz database, so any IANA name works; the chart defaults to `Europe/Berlin` |
 | `BELL_WEBHOOK_URL` | — | Also POST the notification as JSON here: ntfy, gotify, Home Assistant |
 | `BELL_DEBUG` | unset | Debug logging |
 
-Pushover, the webhook, both, or neither — neither means log-only, which is the
-quickest way to test the plumbing.
+`BELL_WEBHOOK_URL` is the operator's own relay and has no notion of a
+recipient, so on a shared server it sees everyone's notifications. Leave it
+unset unless that is what you want.
 
 ## How it behaves
 
@@ -103,11 +110,16 @@ quickest way to test the plumbing.
   when you assign a venture, so the news is the time it is back, not the event.
   The first sync for a character never announces starts — installing the plugin
   with eight ventures running should not push eight "started"
+- **One notification per destination.** Completions are grouped by the
+  credentials their plugin registered, so two people never share a message.
+  `/state` shows only *that* a character has credentials, never what they are —
+  one shared `BELL_TOKEN` must not be a way to read other people's
 - **A failed notification is not retried forever.** Pushover gets three attempts,
   then it is logged as an error rather than re-sent all day
 
 `/venturebell` opens the settings, `/venturebell sync` sends now,
-`/venturebell status` reports the last attempt.
+`/venturebell status` reports the last attempt. The settings window checks the
+connection whenever it opens.
 
 ## API
 
@@ -121,11 +133,15 @@ shows what it believes, `GET /healthz` is unauthenticated for probes.
   "retainers": [
     { "name": "Sultana", "venture": "Quick Exploration", "done_at": 1790283374 },
     { "name": "Coco" }
-  ]
+  ],
+  "pushover": { "token": "axxxxxxxx", "user": "uxxxxxxxx" }
 }
 ```
 
-`done_at` is Unix seconds; omitting it means no venture is running. A
+`done_at` is Unix seconds; omitting it means no venture is running. `pushover`
+carries both halves or neither — the server cannot complete a pair it does not
+have. It is replaced on every sync, so clearing it in the plugin clears it here,
+and a character without it gets a warning in the log rather than a notification. A
 `BELL_WEBHOOK_URL` receives `{title, message, completed[]}`.
 
 ## Development

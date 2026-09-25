@@ -17,6 +17,7 @@ const (
 	maxRetainers = 32             // the game allows ten; the rest is headroom
 	maxName      = 64             // a character name plus world fits comfortably
 	maxSkew      = 30 * 24 * 3600 // seconds either side of now a timestamp may land
+	maxKey       = 64             // Pushover keys are 30; the rest is headroom
 )
 
 func NewServer(b *Bell, cfg Config, log *slog.Logger) http.Handler {
@@ -95,6 +96,25 @@ func validate(req *SyncRequest, now time.Time) error {
 	}
 	if len(req.Retainers) > maxRetainers {
 		return fmt.Errorf("at most %d retainers, got %d", maxRetainers, len(req.Retainers))
+	}
+
+	if req.Pushover != nil {
+		req.Pushover.User = strings.TrimSpace(req.Pushover.User)
+		req.Pushover.Token = strings.TrimSpace(req.Pushover.Token)
+		// An object with no user key is the plugin saying "use the server's
+		// own settings", which is what omitting it means. Normalise so the
+		// state file does not grow empty targets.
+		switch {
+		case req.Pushover.User == "" && req.Pushover.Token == "":
+			req.Pushover = nil
+		case req.Pushover.User == "" || req.Pushover.Token == "":
+			// This server has no Pushover identity of its own, so half a pair
+			// is nothing it can complete.
+			return errors.New("pushover needs both an application token and a user key, or neither")
+		case utf8.RuneCountInString(req.Pushover.User) > maxKey ||
+			utf8.RuneCountInString(req.Pushover.Token) > maxKey:
+			return fmt.Errorf("pushover keys are longer than %d characters", maxKey)
+		}
 	}
 
 	seen := make(map[string]struct{}, len(req.Retainers))

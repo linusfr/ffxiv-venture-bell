@@ -8,6 +8,16 @@ using Dalamud.Plugin.Services;
 
 namespace VentureBell;
 
+/// <summary>What the settings window's indicator shows.</summary>
+public enum LinkState
+{
+    /// Nothing has been tried yet, or there is nothing configured to try.
+    Unknown,
+    Checking,
+    Connected,
+    Unreachable,
+}
+
 /// <summary>
 /// Decides when the server needs to hear from us. Two triggers: closing the
 /// summoning bell, which is when timers have just changed, and a slow poll that
@@ -34,6 +44,9 @@ internal sealed class VentureSync : IDisposable
 
     /// <summary>The last thing that happened, for the settings window to show.</summary>
     internal string Status { get; private set; } = "Nothing sent yet.";
+
+    /// <summary>Whether the server answered the last time we spoke to it.</summary>
+    internal LinkState Link { get; private set; } = LinkState.Unknown;
 
     internal VentureSync(
         Configuration config, RetainerReader reader, BellClient client,
@@ -107,12 +120,51 @@ internal sealed class VentureSync : IDisposable
         _ = SendAsync(snapshot.Value, fingerprint);
     }
 
+    /// <summary>
+    /// Asks the server whether it is reachable and the token accepted, without
+    /// sending anything. What the settings window's indicator is built on.
+    /// </summary>
+    internal void CheckConnection()
+    {
+        if (!_config.IsConfigured)
+        {
+            Link   = LinkState.Unknown;
+            Status = "Set a server address and a token first.";
+            return;
+        }
+
+        Link = LinkState.Checking;
+        _ = CheckAsync();
+    }
+
+    private async Task CheckAsync()
+    {
+        try
+        {
+            var error = await _client.CheckAsync(_config, _shutdown.Token).ConfigureAwait(false);
+            if (error is null)
+            {
+                Link   = LinkState.Connected;
+                Status = $"Connected at {DateTime.Now:HH:mm:ss}.";
+            }
+            else
+            {
+                Link   = LinkState.Unreachable;
+                Status = error;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Unloading mid-request.
+        }
+    }
+
     private async Task SendAsync(Snapshot snapshot, string fingerprint)
     {
         try
         {
             var error = await _client
-                .SendAsync(_config.ServerUrl, _config.Token, snapshot, _shutdown.Token)
+                .SendAsync(_config, snapshot, _shutdown.Token)
                 .ConfigureAwait(false);
 
             if (error is null)
@@ -120,12 +172,14 @@ internal sealed class VentureSync : IDisposable
                 // Only a delivered payload counts as sent, so a failure is
                 // retried by the next poll rather than forgotten.
                 _lastSent = fingerprint;
+                Link      = LinkState.Connected;
                 Status    = $"Sent {snapshot.Retainers.Count} retainers at {DateTime.Now:HH:mm:ss}.";
                 _config.Debug(_log, "VentureBell: " + Status);
             }
             else
             {
                 _lastSent = "";
+                Link      = LinkState.Unreachable;
                 Status    = $"Failed at {DateTime.Now:HH:mm:ss} — {error}";
                 _log.Warning("VentureBell: sync failed — " + error);
             }

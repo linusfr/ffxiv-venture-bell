@@ -84,16 +84,8 @@ spec:
             - name: BELL_WEBHOOK_URL
               value: {{ . | quote }}
             {{- end }}
-            {{- with .Values.config.pushover.priority }}
+            {{- with .Values.config.pushoverPriority }}
             - name: PUSHOVER_PRIORITY
-              value: {{ . | quote }}
-            {{- end }}
-            {{- with .Values.config.pushover.device }}
-            - name: PUSHOVER_DEVICE
-              value: {{ . | quote }}
-            {{- end }}
-            {{- with .Values.config.pushover.sound }}
-            - name: PUSHOVER_SOUND
               value: {{ . | quote }}
             {{- end }}
             {{- if .Values.config.debug }}

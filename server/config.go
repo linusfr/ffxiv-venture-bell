@@ -26,11 +26,11 @@ type Config struct {
 	WebhookURL string
 }
 
+// PushoverConfig is what little the server has to say about Pushover. It holds
+// no credentials at all: the application token and the user key both come from
+// the plugin, so this server cannot send to anybody who has not asked it to,
+// and nobody's ventures land on the operator's phone or quota.
 type PushoverConfig struct {
-	Token    string
-	User     string
-	Device   string
-	Sound    string
 	Priority int
 }
 
@@ -38,15 +38,9 @@ type PushoverConfig struct {
 // machine, one player, notifications that should not wake anybody.
 func LoadConfig() (Config, error) {
 	c := Config{
-		Addr:      env("BELL_ADDR", "127.0.0.1:8770"),
-		Token:     os.Getenv("BELL_TOKEN"),
-		StatePath: env("BELL_STATE", "state.json"),
-		Pushover: PushoverConfig{
-			Token:  os.Getenv("PUSHOVER_TOKEN"),
-			User:   os.Getenv("PUSHOVER_USER"),
-			Device: os.Getenv("PUSHOVER_DEVICE"),
-			Sound:  os.Getenv("PUSHOVER_SOUND"),
-		},
+		Addr:        env("BELL_ADDR", "127.0.0.1:8770"),
+		Token:       os.Getenv("BELL_TOKEN"),
+		StatePath:   env("BELL_STATE", "state.json"),
 		WebhookURL:  os.Getenv("BELL_WEBHOOK_URL"),
 		NotifyStart: os.Getenv("BELL_NOTIFY_START") != "",
 	}
@@ -70,8 +64,13 @@ func LoadConfig() (Config, error) {
 	if c.Token == "" {
 		return c, fmt.Errorf("BELL_TOKEN is required (any long random string; the plugin sends it back)")
 	}
-	if (c.Pushover.Token == "") != (c.Pushover.User == "") {
-		return c, fmt.Errorf("PUSHOVER_TOKEN and PUSHOVER_USER must be set together")
+	// Loud rather than ignored: someone upgrading would otherwise keep dead
+	// variables and quietly wonder why notifications stopped arriving.
+	for _, dead := range []string{"PUSHOVER_TOKEN", "PUSHOVER_USER", "PUSHOVER_DEVICE", "PUSHOVER_SOUND"} {
+		if os.Getenv(dead) != "" {
+			return c, fmt.Errorf("%s is no longer used — Pushover credentials now come from the plugin, "+
+				"so move them into its settings and drop this variable", dead)
+		}
 	}
 	if c.Pushover.Priority < -2 || c.Pushover.Priority > 1 {
 		// Priority 2 needs retry/expire parameters and an acknowledgement flow.

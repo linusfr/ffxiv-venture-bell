@@ -20,7 +20,7 @@ func TestStoreRoundTrip(t *testing.T) {
 		t.Fatalf("a fresh install already knows %d characters", len(state.Characters))
 	}
 
-	state.merge("Y'shtola@Phoenix", []Retainer{{Name: "Sultana", Venture: "Quick Exploration", DoneAt: at(time.Hour)}}, base)
+	state.merge("Y'shtola@Phoenix", []Retainer{{Name: "Sultana", Venture: "Quick Exploration", DoneAt: at(time.Hour)}}, nil, base)
 	if err := s.Save(state); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
