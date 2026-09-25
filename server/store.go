@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 )
 
-// Store persists state as one JSON file. A database would be three orders of
-// magnitude more machinery than ten rows of retainer timers deserve.
+// Store persists state as one JSON file. Ten rows of timers do not warrant a
+// database.
 type Store struct {
 	path string
 }
@@ -36,17 +36,16 @@ func (s *Store) Load() (*State, error) {
 	return &st, nil
 }
 
-// Save writes through a temporary file in the same directory. A half-written
-// state file would fail to parse on the next boot and take the timers with it.
+// Save writes through a temporary file: a half-written one would fail to parse
+// on the next boot and take the timers with it.
 func (s *Store) Save(st *State) error {
 	b, err := json.MarshalIndent(st, "", "  ")
 	if err != nil {
 		return err
 	}
 
-	// Created on every save rather than at startup: the path is user-supplied,
-	// and a directory that disappears under a running server should not cost
-	// every pending timer.
+	// On every save, not at startup: a directory that disappears under a
+	// running server should not cost every pending timer.
 	dir := filepath.Dir(s.path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err

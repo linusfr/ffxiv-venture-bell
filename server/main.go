@@ -13,10 +13,8 @@ import (
 	"syscall"
 	"time"
 
-	// The container image is distroless and carries no /usr/share/zoneinfo, so
-	// TZ=Europe/Berlin would silently resolve to UTC and every time printed in
-	// a notification would be an hour or two out. Embedding the database costs
-	// ~450KB and makes TZ mean what it says wherever this runs.
+	// The distroless image has no /usr/share/zoneinfo, so TZ would silently
+	// resolve to UTC. ~450KB to make it mean what it says.
 	_ "time/tzdata"
 )
 
@@ -83,13 +81,10 @@ func run(log *slog.Logger) error {
 func buildNotifier(cfg Config, log *slog.Logger) Notifier {
 	client := &http.Client{Timeout: 10 * time.Second}
 
-	// Pushover is always available: it needs no server-side configuration,
-	// because every message carries the credentials the plugin registered.
+	// Always available: every message carries the plugin's own credentials.
 	targets := multiNotifier{newPushover(cfg.Pushover, client)}
 	if cfg.WebhookURL != "" {
-		// The operator's own relay. It has no notion of a recipient, so it sees
-		// everything this server handles — worth knowing before pointing it at
-		// a shared channel.
+		// The operator's relay: no notion of a recipient, so it sees everything.
 		targets = append(targets, &webhookNotifier{url: cfg.WebhookURL, client: client})
 	}
 	return targets

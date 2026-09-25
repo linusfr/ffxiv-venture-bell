@@ -33,21 +33,15 @@ Add to Dalamud's custom plugin repositories (`/xlsettings` → Experimental):
 https://raw.githubusercontent.com/linusfr/ffxiv-venture-bell/main/pluginmaster.json
 ```
 
-Run the server (below), then put its address and token into `/venturebell`,
-which shows a green dot once the server answers. Then add your Pushover
-credentials, and you are done.
+Run the server (below), put its address and token into `/venturebell` — a green
+dot means it answered — then add your Pushover credentials:
+[register an application](https://pushover.net/apps/build), and paste its API
+token and your user key into the plugin. "Send a test notification" proves both.
 
-**The server holds no Pushover account.** Both halves — the application token
-and your user key — live in the plugin and travel with each sync. That is what
-makes a shared server safe in both directions: your friends' ventures can never
-arrive on the operator's phone, and nobody's notifications come out of anybody
-else's quota. Point a friend at your server and all they need is the URL, the
-`BELL_TOKEN`, and their own Pushover setup.
-
-[Register an application](https://pushover.net/apps/build) — any name, and its
-icon is what shows on your lock screen — then paste its API token and your user
-key (top right of the dashboard) into the plugin. Priority defaults to `-1`:
-delivered, silent, and Pushover's own quiet hours already work.
+**The server holds no Pushover account.** Both halves live in the plugin and
+travel with each sync, so a friend needs only the URL, the `BELL_TOKEN` and
+their own Pushover setup — and nobody's ventures land on the operator's phone or
+quota.
 
 ## Running the server
 
@@ -55,22 +49,19 @@ delivered, silent, and Pushover's own quiet hours already work.
 BELL_TOKEN=$(openssl rand -hex 24) ./venturebell
 ```
 
-Docker: `ghcr.io/linusfr/ffxiv-venture-bell`, state on `/data`. The image is
-distroless and runs as uid 65532, so a bind mount needs `chown 65532:65532`; a
-named volume sorts itself out.
-
-Kubernetes:
+Docker: `ghcr.io/linusfr/ffxiv-venture-bell`, state on `/data`. Distroless and
+uid 65532, so a bind mount needs `chown 65532:65532`; a named volume sorts
+itself out.
 
 ```sh
 kubectl create secret generic venturebell --from-literal=BELL_TOKEN=…
 helm install venturebell oci://ghcr.io/linusfr/charts/venturebell \
-  --version 1.4.0 --set existingSecret=venturebell
+  --version 2.0.0 --set existingSecret=venturebell
 ```
 
-Chart `1.4.0` pulls image `1.4.0`. Rendering fails outright if neither
-`existingSecret` nor `secret.bellToken` is set; the rest is in
-[`chart/values.yaml`](chart/values.yaml). GHCR publishes new packages private,
-so the first pull may need the visibility flipped.
+The chart pulls the image of the same version. Rendering fails outright without
+a token; the rest is [`chart/values.yaml`](chart/values.yaml). GHCR publishes
+new packages private, so a first pull may need the visibility flipped.
 
 ## Configuration
 
@@ -85,37 +76,30 @@ so the first pull may need the visibility flipped.
 | `PUSHOVER_PRIORITY` | `-1` | Priority `-2`…`1` for every message this server sends; 2 needs an acknowledgement flow |
 | `BELL_NOTIFY_START` | unset | Any value also announces ventures as they are assigned, with the time they are back |
 | `TZ` | UTC | Zone for those times. The image carries its own tz database, so any IANA name works; the chart defaults to `Europe/Berlin` |
-| `BELL_WEBHOOK_URL` | — | Also POST the notification as JSON here: ntfy, gotify, Home Assistant |
+| `BELL_WEBHOOK_URL` | — | Also POST each notification as JSON here. The operator's relay, with no notion of a recipient, so on a shared server it sees everyone's |
 | `BELL_DEBUG` | unset | Debug logging |
-
-`BELL_WEBHOOK_URL` is the operator's own relay and has no notion of a
-recipient, so on a shared server it sees everyone's notifications. Leave it
-unset unless that is what you want.
 
 ## How it behaves
 
-- **Absolute times, not durations.** A slow request or a restart cannot skew a
-  countdown that was never relative
-- **Each sync is the whole retainer list**, not an event. Reassign a venture,
-  dismiss a retainer, play a second character — the next sync is the truth
+- **Absolute times, not durations**, so a restart cannot skew the countdown
+- **Each sync is the whole retainer list**, not an event: reassign a venture,
+  dismiss a retainer, play an alt — the next sync is the truth
 - **One message per batch.** When a venture comes due, anything finishing within
-  `BELL_COALESCE` rides along. Nothing is ever sent early on its own
+  `BELL_COALESCE` rides along. Nothing is sent early on its own
 - **Nothing you can already see**, and nothing from last Tuesday: a venture that
-  had finished before the plugin synced is never pushed, and one missed by more
-  than `BELL_STALE` is dropped
+  finished before the plugin synced is never pushed, and one missed by more than
+  `BELL_STALE` is dropped
 - **The plugin syncs at the summoning bell** — the only place the game hands the
   client real timers — and then every minute if something changed. A venture
   assigned with the plugin off is one the server never hears about
-- **Start notifications are opt-in and quiet by default.** You are at the bell
-  when you assign a venture, so the news is the time it is back, not the event.
-  The first sync for a character never announces starts — installing the plugin
-  with eight ventures running should not push eight "started"
-- **One notification per destination.** Completions are grouped by the
-  credentials their plugin registered, so two people never share a message.
-  `/state` shows only *that* a character has credentials, never what they are —
-  one shared `BELL_TOKEN` must not be a way to read other people's
+- **Start notifications are opt-in.** You are at the bell when you assign one,
+  so the news is the time it is back. A character's first sync never announces
+  starts — installing with eight running should not push eight "started"
+- **One notification per destination**, grouped by the credentials each plugin
+  registered. `/state` shows only *that* a character has some, never what they
+  are: one shared `BELL_TOKEN` must not read out other people's
 - **A failed notification is not retried forever.** Pushover gets three attempts,
-  then it is logged as an error rather than re-sent all day
+  then an error in the log rather than a re-send all day
 
 On screen, a small list shows what each retainer is doing and when it is back:
 
@@ -125,13 +109,12 @@ Popsy   Field Exploration VIII   2h08m
 Coco                              idle
 ```
 
-Minute resolution — a venture is hours away, and a ticking clock is something
-to watch rather than glance at. No title bar, no buttons, click-through while
-locked. It can be set to appear
-only when a venture is back, or only when all of them are, and it stays out of
-duties and cutscenes by default. "Move it" in the settings unlocks it for
-dragging; "Anchor it here" puts it back. Where you left it is kept in the
-plugin's own config rather than ImGui's, so it survives updates and reinstalls.
+Minute resolution, because a venture is hours away. No title bar, no buttons,
+click-through while locked, and out of the way in duties. It can be set to
+appear only when a venture is back, or when all of them are. Text is a real font
+size, 10–36px, so it stays sharp. "Move it" unlocks it for dragging and "Anchor
+it here" puts it back; the position lives in the plugin's config, so it survives
+reloads.
 
 `/venturebell` opens the settings, `/venturebell sync` sends now,
 `/venturebell status` reports the last attempt, `/venturebell window` toggles the
@@ -141,10 +124,9 @@ button reports under "Last action".
 ## API
 
 `POST /sync` replaces what the server knows about one character. `POST /test`
-sends one notification immediately with the credentials in the body and stores
-nothing — it is what the plugin's "Send a test notification" button calls, and it
+sends one notification with the credentials in the body, stores nothing, and
 answers with Pushover's own error when a key is wrong. `GET /state` shows what
-the server believes, `GET /healthz` is unauthenticated for probes.
+the server believes; `GET /healthz` is unauthenticated, for probes.
 
 ```jsonc
 // Authorization: Bearer <BELL_TOKEN>
@@ -159,15 +141,14 @@ the server believes, `GET /healthz` is unauthenticated for probes.
 ```
 
 `done_at` is Unix seconds; omitting it means no venture is running. `pushover`
-carries both halves or neither — the server cannot complete a pair it does not
-have. It is replaced on every sync, so clearing it in the plugin clears it here,
-and a character without it gets a warning in the log rather than a notification. A
-`BELL_WEBHOOK_URL` receives `{title, message, completed[]}`.
+carries both halves or neither, and is replaced on every sync — a character
+without it gets a log warning rather than a notification. A `BELL_WEBHOOK_URL`
+receives `{title, message, completed[]}`.
 
 ## Development
 
 ```sh
-just run          # the server, log-only, on 127.0.0.1:8770
+just run          # the server on 127.0.0.1:8770
 just sync 10      # pretend a bell: a retainer finishing in ten seconds
 just install      # the plugin into ~/.xlcore/devPlugins for /xlplugins dev mode
 just check        # everything CI runs

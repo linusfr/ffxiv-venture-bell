@@ -27,16 +27,14 @@ type Notifier interface {
 	Notify(ctx context.Context, n Notification) error
 }
 
-// TargetedNotifier delivers to an account the client supplied rather than the
-// one in the server's environment. Notifiers that have no notion of a
-// recipient — a webhook relay — simply do not implement it and keep receiving
-// everything.
+// TargetedNotifier delivers to an account the client supplied. Notifiers with
+// no notion of a recipient — a webhook relay — do not implement it and keep
+// receiving everything.
 type TargetedNotifier interface {
 	NotifyTo(ctx context.Context, n Notification, target PushoverTarget) error
 }
 
-// compose turns a batch of completions into something worth reading on a lock
-// screen: what came back, and what it was doing.
+// compose turns a batch into something worth reading on a lock screen.
 func compose(items []Completion) (title, message string) {
 	sort.Slice(items, func(i, j int) bool {
 		if items[i].Character != items[j].Character {
@@ -49,8 +47,8 @@ func compose(items []Completion) (title, message string) {
 	for _, it := range items {
 		characters[it.Character] = struct{}{}
 	}
-	// One character is the normal case, and prefixing every line with the only
-	// name in play is noise. Two or more and the name is the point.
+	// With one character in play its name on every line is noise; with two it
+	// is the point.
 	withCharacter := len(characters) > 1
 
 	lines := make([]string, 0, len(items))
@@ -75,9 +73,8 @@ func compose(items []Completion) (title, message string) {
 	}
 }
 
-// composeStarted announces ventures as they are sent out. It names the time
-// they are back, which is the one thing the summoning bell in front of you does
-// not put on your phone.
+// composeStarted announces ventures as they go out, naming the time they are
+// back — the one thing the bell in front of you does not put on your phone.
 func composeStarted(items []Completion) (title, message string) {
 	sort.Slice(items, func(i, j int) bool { return items[i].DoneAt < items[j].DoneAt })
 
@@ -93,8 +90,7 @@ func composeStarted(items []Completion) (title, message string) {
 		if it.Venture != "" {
 			line += " — " + it.Venture
 		}
-		// Local time, so the container needs a TZ; UTC would be an hour or two
-		// off and look like a bug in the timers.
+		// Local time, so the container needs a TZ or this looks like a bug.
 		line += " · back " + time.Unix(it.DoneAt, 0).Format("15:04")
 		if withCharacter {
 			line = it.Character + ": " + line
@@ -137,8 +133,7 @@ func (m multiNotifier) NotifyTo(ctx context.Context, n Notification, target Push
 		var err error
 		if t, ok := to.(TargetedNotifier); ok {
 			if target.IsZero() {
-				// Nowhere to send: the plugin has not been given credentials.
-				// The webhook, which has no notion of a recipient, still runs.
+				// No credentials from the plugin. The webhook still runs.
 				continue
 			}
 			err = t.NotifyTo(ctx, n, target)
@@ -172,9 +167,7 @@ func (p *pushoverNotifier) Notify(ctx context.Context, n Notification) error {
 	return p.NotifyTo(ctx, n, PushoverTarget{})
 }
 
-// NotifyTo sends to the account the client supplied. The application token
-// stays the server's unless the client brought its own, which is the normal
-// Pushover arrangement: one application, many users.
+// NotifyTo sends to the account the client supplied.
 func (p *pushoverNotifier) NotifyTo(ctx context.Context, n Notification, target PushoverTarget) error {
 	if target.IsZero() {
 		return permanent{errors.New("no Pushover credentials — set them in the plugin's settings")}
@@ -185,8 +178,7 @@ func (p *pushoverNotifier) NotifyTo(ctx context.Context, n Notification, target 
 		"user":    {target.User},
 		"title":   {n.Title},
 		"message": {n.Message},
-		// The completion time, not the send time. With a lead time set, those
-		// differ, and the phone should show when the venture is actually up.
+		// The completion time, not the send time: with a lead they differ.
 		"timestamp": {strconv.FormatInt(n.At.Unix(), 10)},
 		"priority":  {strconv.Itoa(p.priority)},
 	}
@@ -209,8 +201,7 @@ func (p *pushoverNotifier) NotifyTo(ctx context.Context, n Notification, target 
 		case resp.StatusCode/100 == 2:
 			return nil
 		case resp.StatusCode/100 == 4:
-			// Bad token, bad user key, malformed message. Retrying changes
-			// nothing and the answer is in the body.
+			// Bad key or malformed message: retrying changes nothing.
 			return permanent{fmt.Errorf("pushover rejected the message: %s: %s", resp.Status, strings.TrimSpace(string(body)))}
 		default:
 			return fmt.Errorf("pushover: %s: %s", resp.Status, strings.TrimSpace(string(body)))
@@ -221,8 +212,7 @@ func (p *pushoverNotifier) NotifyTo(ctx context.Context, n Notification, target 
 // ── generic webhook ─────────────────────────────────────────────────────────
 
 // webhookNotifier posts the same notification as JSON anywhere: ntfy, gotify,
-// a Discord relay, or Home Assistant, for people who want the delivery policy
-// to live somewhere other than here.
+// a Discord relay, Home Assistant.
 type webhookNotifier struct {
 	url    string
 	client *http.Client

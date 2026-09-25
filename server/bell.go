@@ -7,9 +7,8 @@ import (
 	"time"
 )
 
-// Bell owns the countdown. The plugin only ever tells it what the game showed;
-// everything about when to speak up happens here, so closing the game — the
-// entire point of the exercise — changes nothing.
+// Bell owns the countdown. The plugin only reports what the game showed, so
+// closing the game — the point of the exercise — changes nothing.
 type Bell struct {
 	cfg   Config
 	store *Store
@@ -21,13 +20,11 @@ type Bell struct {
 	state *State
 
 	wake chan struct{}
-	// Ventures that have just been assigned, handed to Run so the plugin's
-	// request is not left waiting on Pushover.
+	// Handed to Run so the plugin's request never waits on Pushover.
 	started chan startedBatch
 }
 
-// startedBatch is one sync's worth of new ventures, which all belong to one
-// character and therefore to one destination.
+// startedBatch is one sync's new ventures: one character, one destination.
 type startedBatch struct {
 	target PushoverTarget
 	items  []Completion
@@ -41,8 +38,7 @@ func NewBell(cfg Config, store *Store, state *State, send Notifier, log *slog.Lo
 		send:  send,
 		log:   log,
 		now:   time.Now,
-		// Buffered: a sync that lands while the scheduler is mid-tick should
-		// leave a note, not block on it.
+		// Buffered: a sync landing mid-tick leaves a note rather than blocking.
 		wake:    make(chan struct{}, 1),
 		started: make(chan startedBatch, 8),
 	}
@@ -60,21 +56,18 @@ func (b *Bell) Sync(req SyncRequest) error {
 		select {
 		case b.started <- startedBatch{target: target, items: started}:
 		default:
-			// Eight batches already queued means notifications are not going
-			// out at all; dropping one is better than growing a backlog.
+			// Eight queued means nothing is going out; drop rather than grow.
 			b.log.Warn("dropped a start notification", "count", len(started))
 		}
 	}
 
-	// Re-arm even if the save failed: the merge already happened in memory, and
-	// a disk problem should cost persistence across a restart, not the
-	// notification this session.
+	// Re-arm even if the save failed: a disk problem should cost persistence
+	// across a restart, not this session's notification.
 	b.nudge()
 	return err
 }
 
-// Snapshot is what /state serves: a copy, so a slow reader cannot hold the
-// scheduler's lock.
+// Snapshot is what /state serves: a copy, so a slow reader cannot hold the lock.
 func (b *Bell) Snapshot() State {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -83,10 +76,8 @@ func (b *Bell) Snapshot() State {
 	for name, c := range b.state.Characters {
 		copied := *c
 		copied.Retainers = append([]entry(nil), c.Retainers...)
-		// Redacted: everyone syncing to this server presents the same
-		// BELL_TOKEN, so /state must not hand one person another's Pushover
-		// keys. Whether a character has its own destination is still visible,
-		// because that is the useful part when a notification does not arrive.
+		// Everyone shares one BELL_TOKEN, so /state must not hand out other
+		// people's keys — only whether a character has any.
 		if c.Pushover != nil {
 			copied.Pushover = &PushoverTarget{User: "(set)"}
 		}
@@ -95,9 +86,8 @@ func (b *Bell) Snapshot() State {
 	return out
 }
 
-// SendTest delivers one message to the credentials supplied, so somebody can
-// find out whether they typed them correctly without waiting hours for a
-// venture. It touches no state.
+// SendTest delivers one message to the credentials supplied, so a typo is
+// discoverable without waiting hours for a venture. It touches no state.
 func (b *Bell) SendTest(ctx context.Context, target PushoverTarget) error {
 	n := Notification{
 		Title:   "Venture Bell",
@@ -160,13 +150,13 @@ func (b *Bell) nextAt() (time.Time, bool) {
 }
 
 // tick sends whatever is due. Completions are marked and persisted before the
-// send, not after: a crash mid-send loses one notification, whereas marking
-// afterwards would re-send the whole batch on every restart until it succeeds.
+// send: a crash then loses one notification, where marking afterwards would
+// re-send the batch on every restart until it succeeded.
 func (b *Bell) tick(ctx context.Context) {
 	b.mu.Lock()
 	items := b.state.due(b.now(), b.cfg.Lead, b.cfg.Coalesce, b.cfg.Stale)
-	// Grouped under the same lock that produced them, so a sync landing
-	// mid-tick cannot move a completion's destination out from under it.
+	// Grouped under the lock that produced them, so a sync landing mid-tick
+	// cannot move a destination out from under a completion.
 	groups := b.state.group(items)
 	var saveErr error
 	if len(items) > 0 {
@@ -193,8 +183,7 @@ func (b *Bell) tick(ctx context.Context) {
 
 func (b *Bell) deliver(ctx context.Context, n Notification, target PushoverTarget) {
 	if target.IsZero() {
-		// Not an error: a plugin that has not been given Pushover credentials
-		// yet is an ordinary state, and this is where someone finds out.
+		// Ordinary state, not a fault — but this is where someone finds out.
 		b.log.Warn("nothing to notify with — no Pushover credentials from the plugin",
 			"character", n.Items[0].Character, "title", n.Title)
 	}
@@ -206,8 +195,7 @@ func (b *Bell) deliver(ctx context.Context, n Notification, target PushoverTarge
 		err = b.send.Notify(ctx, n)
 	}
 	if err != nil {
-		// Deliberately loud: the notification is gone, and the only place that
-		// fact can still surface is the log.
+		// Loud: the notification is gone, and the log is the only trace left.
 		b.log.Error("notification not delivered", "err", err, "title", n.Title, "count", len(n.Items))
 		return
 	}

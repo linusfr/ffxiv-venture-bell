@@ -2,22 +2,17 @@ package main
 
 import "time"
 
-// Retainer is one row of what the plugin saw at the summoning bell.
-// DoneAt is an absolute Unix timestamp, not a duration: the countdown belongs
-// to the server, and an absolute time survives a restart, a slow request and a
-// game that gets closed thirty seconds after the sync.
+// Retainer is one row of what the plugin saw at the summoning bell. DoneAt is
+// absolute rather than a duration, so a restart or a slow request cannot skew a
+// countdown that was never relative.
 type Retainer struct {
 	Name    string `json:"name"`
 	Venture string `json:"venture,omitempty"`
 	DoneAt  int64  `json:"done_at"` // 0 = no venture running
 }
 
-// PushoverTarget is where one character's notifications go. It lets a single
-// server serve several people: each plugin sends its own user key, and the
-// application token stays the server's unless a client brings its own.
-//
-// Absent means "use whatever the server is configured with", which is the
-// single-user case and needs no plugin configuration at all.
+// PushoverTarget is where one character's notifications go. Both halves come
+// from the plugin, which is what lets one server serve several people.
 type PushoverTarget struct {
 	User  string `json:"user"`
 	Token string `json:"token,omitempty"`
@@ -25,15 +20,13 @@ type PushoverTarget struct {
 
 func (t PushoverTarget) IsZero() bool { return t.User == "" }
 
-// SyncRequest is the plugin's whole view of one character's retainers. It is a
-// state replacement, not an event: a retainer missing from the list is gone,
-// and a changed DoneAt is a reassigned venture. Nothing here needs the server
-// to have seen the previous message.
+// SyncRequest is the plugin's whole view of one character. A state
+// replacement, not an event: a missing retainer is gone, a changed DoneAt is a
+// reassigned venture, and nothing depends on the previous message arriving.
 type SyncRequest struct {
 	Character string     `json:"character"`
 	Retainers []Retainer `json:"retainers"`
-	// Where this character's notifications should go. Sent on every sync, so
-	// clearing it in the plugin clears it here too.
+	// Replaced on every sync, so clearing it in the plugin clears it here.
 	Pushover *PushoverTarget `json:"pushover,omitempty"`
 }
 
@@ -42,17 +35,15 @@ type entry struct {
 	Name    string `json:"name"`
 	Venture string `json:"venture,omitempty"`
 	DoneAt  int64  `json:"done_at"`
-	// Notified doubles as the de-duplication set. Keeping it on the record
-	// rather than in a separate "already sent" set means it is dropped when the
-	// retainer is, so nothing accumulates and nothing needs collecting.
+	// Doubles as the de-duplication set: it is dropped when the retainer is, so
+	// nothing accumulates and nothing needs collecting.
 	Notified bool `json:"notified,omitempty"`
 }
 
 type character struct {
 	Retainers []entry `json:"retainers"`
 	SyncedAt  int64   `json:"synced_at"`
-	// Replaced wholesale on every sync, like the retainer list: the plugin is
-	// the source of truth, and a key removed there is removed here.
+	// Replaced wholesale on every sync, like the retainer list.
 	Pushover *PushoverTarget `json:"pushover,omitempty"`
 }
 
@@ -64,8 +55,7 @@ func NewState() *State {
 	return &State{Characters: map[string]*character{}}
 }
 
-// Target is where a character's notifications go, or the zero value for the
-// server's own configuration.
+// Target is where a character's notifications go, if it registered any.
 func (s *State) Target(character string) PushoverTarget {
 	if c, ok := s.Characters[character]; ok && c.Pushover != nil {
 		return *c.Pushover
@@ -81,12 +71,9 @@ type Completion struct {
 	DoneAt    int64  `json:"done_at"`
 }
 
-// merge replaces what is known about one character, and reports the ventures
-// that are newly under way.
-//
-// The first sync for a character reports nothing: installing the plugin with
-// eight ventures already running would otherwise announce all eight as if they
-// had just been assigned. That first sight is a silent baseline.
+// merge replaces what is known about one character and reports the ventures
+// newly under way. The first sync for a character reports none: installing the
+// plugin with eight running would otherwise announce all eight as new.
 func (s *State) merge(name string, in []Retainer, target *PushoverTarget, now time.Time) []Completion {
 	prev := map[string]entry{}
 	_, known := s.Characters[name]
@@ -105,9 +92,8 @@ func (s *State) merge(name string, in []Retainer, target *PushoverTarget, now ti
 			// Same venture we already knew about: keep whether it was sent.
 			e.Notified = p.Notified
 		case e.DoneAt > 0 && e.DoneAt <= now.Unix():
-			// First sight of a venture that has already finished. The plugin
-			// only syncs at the summoning bell, so this is on screen right now
-			// — pushing it to a phone would be telling you what you can see.
+			// Already finished when first seen. The plugin syncs at the bell,
+			// so it is on screen — no need to put it on a phone.
 			e.Notified = true
 		case known && e.DoneAt > now.Unix():
 			// A venture this retainer was not on a moment ago.
@@ -127,14 +113,10 @@ func (s *State) merge(name string, in []Retainer, target *PushoverTarget, now ti
 
 // due returns everything to notify about now, and marks it notified.
 //
-// Coalescing looks forward rather than back: when a venture comes due, anything
-// finishing within the window rides along with it, slightly early. Holding the
-// first notification open to see what else arrives would instead delay every
-// notification by the window even when nothing else is coming.
-//
-// The window only ever widens a batch that already has something genuinely due
-// in it. Without that, a lone venture finishing in ten seconds would be
-// announced now, and every notification would run early by up to the window.
+// Coalescing looks forward: when a venture comes due, anything finishing within
+// the window rides along slightly early. Holding the first notification open
+// instead would delay every one by the window. It only ever widens a batch that
+// already has something due, or a lone venture would always run early.
 func (s *State) due(now time.Time, lead, coalesce, stale time.Duration) []Completion {
 	if !s.anyDueAt(now, lead, stale) {
 		return nil
@@ -154,9 +136,8 @@ func (s *State) due(now time.Time, lead, coalesce, stale time.Duration) []Comple
 			if done.Add(-lead).After(horizon) {
 				continue
 			}
-			// Missed by a mile: the server was down, or the machine was
-			// asleep. A notification for a venture that finished this morning
-			// is noise, so swallow it.
+			// Server down, or machine asleep. A venture that finished this
+			// morning is noise.
 			if done.Before(cutoff) {
 				e.Notified = true
 				continue
@@ -173,9 +154,8 @@ func (s *State) due(now time.Time, lead, coalesce, stale time.Duration) []Comple
 	return out
 }
 
-// anyDueAt reports whether a completion has actually arrived, ignoring the
-// coalescing window. Stale completions count: they are not notified, but they
-// still need a pass through due to be retired.
+// anyDueAt reports whether a completion has arrived, ignoring the coalescing
+// window. Stale ones count: they still need a pass through due to be retired.
 func (s *State) anyDueAt(now time.Time, lead, stale time.Duration) bool {
 	for _, c := range s.Characters {
 		for _, e := range c.Retainers {
@@ -190,9 +170,8 @@ func (s *State) anyDueAt(now time.Time, lead, stale time.Duration) bool {
 	return false
 }
 
-// group splits a batch by where it has to go. Characters that share a
-// destination — the usual case of one person, or several who left the plugin's
-// notification fields empty — stay in one notification.
+// group splits a batch by destination. Characters sharing one stay in a single
+// notification.
 func (s *State) group(items []Completion) map[PushoverTarget][]Completion {
 	out := map[PushoverTarget][]Completion{}
 	for _, it := range items {

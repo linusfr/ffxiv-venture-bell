@@ -19,10 +19,9 @@ public enum LinkState
 }
 
 /// <summary>
-/// Decides when the server needs to hear from us. Two triggers: closing the
-/// summoning bell, which is when timers have just changed, and a slow poll that
-/// catches everything else — a venture assigned from a retainer already open, a
-/// server that was down when the first attempt went out.
+/// Decides when the server needs to hear from us: closing the summoning bell,
+/// and a slow poll for everything else — a venture assigned with the list
+/// already open, or a server that was down for the first attempt.
 /// </summary>
 internal sealed class VentureSync : IDisposable
 {
@@ -61,8 +60,7 @@ internal sealed class VentureSync : IDisposable
         _log       = log;
 
         _framework.Update += OnUpdate;
-        // PreFinalize rather than PostSetup: on the way out, whatever you just
-        // assigned is already in memory.
+        // PreFinalize: on the way out, what you just assigned is in memory.
         _addons.RegisterListener(AddonEvent.PreFinalize, RetainerListAddon, OnRetainerListClosing);
     }
 
@@ -85,11 +83,9 @@ internal sealed class VentureSync : IDisposable
         Check(force: false);
     }
 
-    /// <summary>
-    /// Reads the game and sends if anything changed. <paramref name="force"/>
-    /// sends even when nothing has, which is what the settings window's button
-    /// and the /venturebell sync command are for.
-    /// </summary>
+    /// <summary>Reads the game and sends if anything changed.
+    /// <paramref name="force"/> sends regardless, for the button and
+    /// /venturebell sync.</summary>
     internal void Check(bool force)
     {
         if (!_config.IsConfigured)
@@ -107,15 +103,14 @@ internal sealed class VentureSync : IDisposable
             return;
         }
 
-        // The credentials are part of the fingerprint: changing them in the
-        // settings has to reach the server, and without this it would wait for
-        // a venture to change first.
+        // Credentials are part of the fingerprint, or changing them would wait
+        // for a venture to change before reaching the server.
         var fingerprint = snapshot.Value.Fingerprint + "|" + _config.PushoverUser + "|" + _config.PushoverToken;
         if (!force && fingerprint == _lastSent)
             return;
 
-        // One request at a time. Without this, a server that has stopped
-        // answering collects a pending request per poll.
+        // One at a time, or a server that stopped answering collects a request
+        // per poll.
         if (Interlocked.CompareExchange(ref _inFlight, 1, 0) != 0)
             return;
 
@@ -125,10 +120,8 @@ internal sealed class VentureSync : IDisposable
         _ = SendAsync(snapshot.Value, fingerprint);
     }
 
-    /// <summary>
-    /// Asks the server whether it is reachable and the token accepted, without
-    /// sending anything. What the settings window's indicator is built on.
-    /// </summary>
+    /// <summary>Whether the server is reachable and the token accepted, without
+    /// sending anything. What the settings indicator is built on.</summary>
     internal void CheckConnection()
     {
         if (!_config.IsConfigured)
@@ -214,8 +207,7 @@ internal sealed class VentureSync : IDisposable
 
             if (error is null)
             {
-                // Only a delivered payload counts as sent, so a failure is
-                // retried by the next poll rather than forgotten.
+                // Only a delivered payload counts, so a failure is retried.
                 _lastSent = fingerprint;
                 Link      = LinkState.Connected;
                 Status    = $"Sent {snapshot.Retainers.Count} retainers at {DateTime.Now:HH:mm:ss}.";
@@ -231,8 +223,7 @@ internal sealed class VentureSync : IDisposable
         }
         catch (OperationCanceledException)
         {
-            // Plugin unloading mid-request. Nothing to report to a window that
-            // is already gone.
+            // Unloading mid-request; the window is already gone.
         }
         finally
         {

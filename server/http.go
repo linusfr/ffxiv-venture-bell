@@ -24,8 +24,8 @@ const (
 func NewServer(b *Bell, cfg Config, log *slog.Logger) http.Handler {
 	mux := http.NewServeMux()
 
-	// Unauthenticated on purpose: it says nothing but that the process is up,
-	// and container health checks should not need the secret.
+	// Unauthenticated: it says only that the process is up, and probes should
+	// not need the secret.
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		fmt.Fprintln(w, "ok")
@@ -56,8 +56,8 @@ func NewServer(b *Bell, cfg Config, log *slog.Logger) http.Handler {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 
-	// Sends one real notification with the credentials in the body. The only
-	// way to learn that a user key is a character out before a venture is due.
+	// One real notification with the credentials in the body — the only way to
+	// catch a mistyped key before a venture is due.
 	mux.Handle("POST /test", authed(cfg.Token, func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, maxBody)
 
@@ -73,15 +73,14 @@ func NewServer(b *Bell, cfg Config, log *slog.Logger) http.Handler {
 			return
 		}
 
-		// Shorter than the client's own timeout, so a retrying send comes back
-		// as a readable error rather than a hang.
+		// Shorter than the client's timeout, so a retrying send returns an
+		// error rather than hanging.
 		ctx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
 		defer cancel()
 
 		if err := b.SendTest(ctx, *req.Pushover); err != nil {
 			log.Warn("test notification failed", "err", err)
-			// Pushover's own words: "application token is invalid" is the whole
-			// answer when it is.
+			// Pushover's own words are the whole answer.
 			http.Error(w, err.Error(), http.StatusBadGateway)
 			return
 		}
@@ -90,8 +89,7 @@ func NewServer(b *Bell, cfg Config, log *slog.Logger) http.Handler {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 
-	// Everything the server believes, for looking at with curl when a
-	// notification does not turn up.
+	// For looking at with curl when a notification does not turn up.
 	mux.Handle("GET /state", authed(cfg.Token, func(w http.ResponseWriter, r *http.Request) {
 		state := b.Snapshot()
 		w.Header().Set("Content-Type", "application/json")
@@ -107,8 +105,7 @@ func NewServer(b *Bell, cfg Config, log *slog.Logger) http.Handler {
 
 func authed(token string, next http.HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// The scheme is required rather than tolerated: accepting a bare token
-		// too would make the header two formats, and the plugin only sends one.
+		// Required rather than tolerated: the plugin only sends one format.
 		presented, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 		if !ok || subtle.ConstantTimeCompare([]byte(presented), []byte(token)) != 1 {
 			w.Header().Set("WWW-Authenticate", `Bearer realm="venture-bell"`)
@@ -119,8 +116,8 @@ func authed(token string, next http.HandlerFunc) http.Handler {
 	})
 }
 
-// validate keeps a malformed or hostile payload out of the state file, which
-// is read back and trusted on every restart.
+// validate keeps a bad payload out of the state file, which is read back and
+// trusted on every restart.
 func validate(req *SyncRequest, now time.Time) error {
 	req.Character = strings.TrimSpace(req.Character)
 	if req.Character == "" {
@@ -143,8 +140,7 @@ func validate(req *SyncRequest, now time.Time) error {
 		case req.Pushover.User == "" && req.Pushover.Token == "":
 			req.Pushover = nil
 		case req.Pushover.User == "" || req.Pushover.Token == "":
-			// This server has no Pushover identity of its own, so half a pair
-			// is nothing it can complete.
+			// The server has no identity of its own to complete a half-pair.
 			return errors.New("pushover needs both an application token and a user key, or neither")
 		case utf8.RuneCountInString(req.Pushover.User) > maxKey ||
 			utf8.RuneCountInString(req.Pushover.Token) > maxKey:
@@ -167,8 +163,7 @@ func validate(req *SyncRequest, now time.Time) error {
 		if utf8.RuneCountInString(r.Venture) > maxName {
 			return fmt.Errorf("retainer %q has a venture longer than %d characters", r.Name, maxName)
 		}
-		// Retainers are keyed by name when merging, so duplicates would make
-		// one of them silently unreachable.
+		// Merging keys on name, so a duplicate makes one silently unreachable.
 		if _, dup := seen[r.Name]; dup {
 			return fmt.Errorf("retainer %q appears twice", r.Name)
 		}

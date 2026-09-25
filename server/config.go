@@ -7,9 +7,8 @@ import (
 	"time"
 )
 
-// Config is the whole of the server's configuration. Everything comes from the
-// environment: there is no config file, because the only deployment shapes are
-// "a binary next to the game" and "a container", and both do env well.
+// Config is the whole of the server's configuration. Environment only: the
+// deployment shapes are a binary and a container, and both do env well.
 type Config struct {
 	Addr      string        // listen address
 	Token     string        // shared secret the plugin must present
@@ -17,25 +16,21 @@ type Config struct {
 	Lead      time.Duration // notify this long before a venture completes
 	Coalesce  time.Duration // ventures completing this close together share one notification
 	Stale     time.Duration // a completion missed by more than this is dropped, not sent late
-	// NotifyStart also announces ventures as they are assigned. Off by default:
-	// you are standing at the summoning bell when it happens, so the useful part
-	// is the confirmation that the server has the timers, not the news itself.
+	// Off by default: you are at the bell when it happens, so the news is the
+	// time it is back, not the event.
 	NotifyStart bool
 
 	Pushover   PushoverConfig
 	WebhookURL string
 }
 
-// PushoverConfig is what little the server has to say about Pushover. It holds
-// no credentials at all: the application token and the user key both come from
-// the plugin, so this server cannot send to anybody who has not asked it to,
-// and nobody's ventures land on the operator's phone or quota.
+// PushoverConfig holds no credentials: both halves come from the plugin, so
+// nobody's ventures land on the operator's phone or quota.
 type PushoverConfig struct {
 	Priority int
 }
 
-// Defaults chosen for the common case: the plugin and the server on the same
-// machine, one player, notifications that should not wake anybody.
+// Defaults for the common case: one player, notifications that wake nobody.
 func LoadConfig() (Config, error) {
 	c := Config{
 		Addr:        env("BELL_ADDR", "127.0.0.1:8770"),
@@ -59,13 +54,12 @@ func LoadConfig() (Config, error) {
 		return c, err
 	}
 
-	// A token is not optional even on localhost. Anything reachable enough for
-	// the plugin to POST to is reachable enough for something else to.
+	// Not optional even on localhost: what the plugin can reach, so can
+	// something else.
 	if c.Token == "" {
 		return c, fmt.Errorf("BELL_TOKEN is required (any long random string; the plugin sends it back)")
 	}
-	// Loud rather than ignored: someone upgrading would otherwise keep dead
-	// variables and quietly wonder why notifications stopped arriving.
+	// Loud rather than ignored, or an upgrade stops notifying in silence.
 	for _, dead := range []string{"PUSHOVER_TOKEN", "PUSHOVER_USER", "PUSHOVER_DEVICE", "PUSHOVER_SOUND"} {
 		if os.Getenv(dead) != "" {
 			return c, fmt.Errorf("%s is no longer used — Pushover credentials now come from the plugin, "+
@@ -73,8 +67,7 @@ func LoadConfig() (Config, error) {
 		}
 	}
 	if c.Pushover.Priority < -2 || c.Pushover.Priority > 1 {
-		// Priority 2 needs retry/expire parameters and an acknowledgement flow.
-		// A retainer coming home does not warrant one.
+		// Priority 2 needs an acknowledgement flow; a retainer does not.
 		return c, fmt.Errorf("PUSHOVER_PRIORITY must be between -2 and 1, got %d", c.Pushover.Priority)
 	}
 
