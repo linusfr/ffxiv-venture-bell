@@ -98,7 +98,7 @@ internal sealed class RetainerBar : IDisposable
 
         ImGui.SameLine(0f, ImGui.GetStyle().ItemSpacing.X * 2f);
         ImGui.BeginDisabled(free == 0);
-        if (ImGui.SmallButton($"send all: {Family()}"))
+        if (ImGui.SmallButton($"all: {Family()}"))
             Queue(best: true);
         ImGui.SameLine();
         if (ImGui.SmallButton("all: quick"))
@@ -156,15 +156,16 @@ internal sealed class RetainerBar : IDisposable
     private static bool Collectable(RetainerVenture r)
         => r.DoneAt > 0 && r.DoneAt <= DateTimeOffset.Now.ToUnixTimeSeconds();
 
-    /// <summary>The word for the free retainers, when they agree on one.</summary>
+    /// <summary>
+    /// The word the retainers agree on. Everyone counts, not only the free
+    /// ones: with all of them out the button would otherwise fall back to
+    /// "exploration" and read as if it meant something else.
+    /// </summary>
     private string Family()
     {
         var word = "";
         foreach (var r in _cached)
         {
-            if (r.DoneAt > DateTimeOffset.Now.ToUnixTimeSeconds())
-                continue;
-
             var best = _plugin.Resolver.BestExploration(r.ClassJob, r.Level);
             if (best is null)
                 continue;

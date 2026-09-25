@@ -134,6 +134,16 @@ size, 10–36px, so it stays sharp. "Move it" unlocks it for dragging and "Ancho
 it here" puts it back; the position lives in the plugin's config, so it survives
 reloads.
 
+At a summoning bell, a strip above the game's own retainer list sends them out
+again — one retainer, or all the free ones at once:
+
+![The buttons above the retainer list](images/screenshots/retainer-bar.png)
+
+Each retainer is resolved separately, so two at different levels get different
+tiers. It drives the game's menus from there: open, collect the finished
+venture, assign, confirm, next one, and back to the list. A venture still
+running is left alone, because replacing one means recalling it.
+
 `/venturebell` opens the settings, `/venturebell sync` sends now,
 `/venturebell status` reports the last attempt, `/venturebell window` toggles the
 list. The settings window checks the connection whenever it opens, and every
