@@ -57,6 +57,7 @@
   }
   h1 .bell { color: var(--accent); }
   .asof { color: var(--faint); font-size: 12.5px; margin-left: auto; font-variant-numeric: tabular-nums; }
+  .notify { margin-left: 0; }
 
   .summary {
     margin-top: 14px; padding: 14px 16px;
@@ -138,6 +139,7 @@
   <div class="masthead">
     <h1><span class="bell">Venture</span> Bell</h1>
     <span class="asof" id="asof"></span>
+    <button class="chip notify" id="notify" type="button" hidden></button>
   </div>
 
   <div class="summary" id="summary" hidden></div>
@@ -150,6 +152,13 @@
 <script>
 const HIDDEN = "venture-bell.hidden";
 const TOKEN  = "venture-bell.token";
+const NOTIFY = "venture-bell.notify";
+const BELL   = document.querySelector('link[rel="icon"]').href;
+
+// Retainers already seen back, so a venture is announced once rather than
+// every time the page polls. Keyed by completion time: the next venture on the
+// same retainer is a different key.
+let announced = new Set();
 
 let state = { characters: {} };
 let hidden = new Set(read(HIDDEN, []));
@@ -304,6 +313,7 @@ function retainerRow(r) {
 }
 
 function draw() {
+  drawNotifyButton();
   drawFilters();
   drawSummary();
 
@@ -363,6 +373,60 @@ function askForToken(message) {
   input.focus();
 }
 
+/** Whether the browser will show a notification, and we were asked to. */
+function notificationsOn() {
+  return "Notification" in window && Notification.permission === "granted" && read(NOTIFY, false);
+}
+
+function drawNotifyButton() {
+  const button = document.getElementById("notify");
+  if (!("Notification" in window)) return;   // Not offered where it cannot work.
+
+  button.hidden = false;
+  const on = notificationsOn();
+  button.textContent = on ? "notifying" : "notify me";
+  button.setAttribute("aria-pressed", String(on));
+
+  button.onclick = async () => {
+    if (on) {
+      write(NOTIFY, false);
+      drawNotifyButton();
+      return;
+    }
+
+    const permission = Notification.permission === "granted"
+      ? "granted"
+      : await Notification.requestPermission();
+    write(NOTIFY, permission === "granted");
+    drawNotifyButton();
+  };
+}
+
+/**
+ * Announces the retainers that came back since the last read. The first read
+ * only takes stock: opening the page is not the moment to be told about a
+ * venture that finished this morning.
+ */
+function announce(firstRead) {
+  const back = [];
+  for (const [character, data] of Object.entries(state.characters))
+    for (const r of data.retainers || [])
+      if (r.done_at && r.done_at <= now()) {
+        const key = `${character}/${r.name}/${r.done_at}`;
+        if (!announced.has(key)) {
+          announced.add(key);
+          back.push(r);
+        }
+      }
+
+  if (firstRead || back.length === 0 || !notificationsOn()) return;
+
+  // One notification for the lot, the way the server batches its own.
+  const title = back.length === 1 ? "Venture complete" : `${back.length} ventures complete`;
+  const body = back.map(r => r.venture ? `${r.name} — ${r.venture}` : r.name).join("\n");
+  new Notification(title, { body, icon: BELL, tag: "venture-bell" });
+}
+
 async function load() {
   // Sent only when there is one: a server behind a login wants no token, and
   // asking for one there would be a lock on an open door.
@@ -379,7 +443,9 @@ async function load() {
     }
     if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
 
+    const firstRead = Object.keys(state.characters).length === 0;
     state = await response.json();
+    announce(firstRead);
     document.getElementById("asof").textContent =
       "read " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     draw();

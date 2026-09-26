@@ -84,6 +84,11 @@ you did not come to see, remembered per browser.
 
 ![The web page](images/screenshots/web.png)
 
+**notify me** in the corner asks the browser for permission and then announces
+ventures as they come back, batched the way the server batches its own. That
+works while the page is open, including in a background tab — for a notification
+with the browser closed, that is what Pushover is for.
+
 It needs its own `BELL_UI_TOKEN` — deliberately not `BELL_TOKEN`, so reading the
 timers does not also let someone sync or send notifications, and the server
 refuses to start if you use the same string for both. The page asks for it once
