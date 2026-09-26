@@ -13,12 +13,12 @@
       "notification",
       "utility"
     ],
-    "AssemblyVersion": "2.6.0.0",
+    "AssemblyVersion": "2.7.0.0",
     "RepoUrl": "https://github.com/linusfr/ffxiv-venture-bell",
     "DownloadLinkInstall": "https://github.com/linusfr/ffxiv-venture-bell/releases/latest/download/VentureBell.zip",
     "DownloadLinkUpdate": "https://github.com/linusfr/ffxiv-venture-bell/releases/latest/download/VentureBell.zip",
     "DownloadLinkTesting": "https://github.com/linusfr/ffxiv-venture-bell/releases/latest/download/VentureBell.zip",
-    "LastUpdated": 1790376606,
+    "LastUpdated": 1790425675,
     "IconUrl": "https://raw.githubusercontent.com/linusfr/ffxiv-venture-bell/main/images/icon.png"
   }
 ]

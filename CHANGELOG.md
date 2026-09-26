@@ -1,11 +1,14 @@
-## 2.6.0 (2026-09-25)
+## 2.7.0 (2026-09-26)
 
 #### Feature
 
-* **plugin:** send retainers out from the summoning bell (bba2718e)
-* **plugin:** work out the best venture for each retainer (ba6cfb8c)
+* **server:** a read-only page for the timers (62b623a1)
+
+#### Documentation
+
+* show the retainer bar, and make its label say what it does (fa1ca651)
 
 #### Chores
 
-* pluginmaster 2.5.0 [skip ci] (bf6e7877)
+* pluginmaster 2.6.0 [skip ci] (19c96d2f)
 
