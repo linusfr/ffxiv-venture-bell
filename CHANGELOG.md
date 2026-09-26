@@ -1,10 +1,10 @@
-## 2.8.0 (2026-09-26)
+## 2.8.1 (2026-09-26)
 
-#### Feature
+#### Bug Fixes
 
-* **server:** let the page notify, and reuse its bell for the plugin (41f79b7c)
+* **plugin:** find the right paths instead of being told (c625b93f)
 
 #### Chores
 
-* pluginmaster 2.7.2 [skip ci] (7a666cf0)
+* pluginmaster 2.8.0 [skip ci] (84a4de8e)
 
