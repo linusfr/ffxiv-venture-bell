@@ -67,6 +67,14 @@ internal sealed class RetainerReader
         if (manager is null || !manager->IsReady)
             return null;
 
+        // The world is half the key the server files these under, and it is not
+        // always resolved yet just after a login. Syncing without it files the
+        // same character a second time, under a name that can never be merged
+        // back — better to say nothing and let the next sync carry it.
+        var character = Character(player);
+        if (character is null)
+            return null;
+
         var retainers = manager->Retainers;
         var found     = new List<RetainerVenture>(retainers.Length);
 
@@ -88,13 +96,15 @@ internal sealed class RetainerReader
             found.Add(new RetainerVenture(name, venture, doneAt, retainer.VentureId, retainer.ClassJob, retainer.Level));
         }
 
-        return new Snapshot(Character(player), found);
+        return new Snapshot(character, found);
     }
 
-    private static string Character(IPlayerState player)
+    /// <summary>"Name@World", or null while either half is still missing.</summary>
+    private static string? Character(IPlayerState player)
     {
+        var name  = player.CharacterName;
         var world = player.HomeWorld.ValueNullable?.Name.ExtractText();
-        return string.IsNullOrEmpty(world) ? player.CharacterName : $"{player.CharacterName}@{world}";
+        return string.IsNullOrEmpty(name) || string.IsNullOrEmpty(world) ? null : $"{name}@{world}";
     }
 
     /// <summary>
