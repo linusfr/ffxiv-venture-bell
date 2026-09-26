@@ -1,14 +1,10 @@
-## 2.7.0 (2026-09-26)
+## 2.7.1 (2026-09-26)
 
-#### Feature
+#### Bug Fixes
 
-* **server:** a read-only page for the timers (62b623a1)
-
-#### Documentation
-
-* show the retainer bar, and make its label say what it does (fa1ca651)
+* **plugin:** do not sync before the world is known (5e851a8a)
 
 #### Chores
 
-* pluginmaster 2.6.0 [skip ci] (19c96d2f)
+* pluginmaster 2.7.0 [skip ci] (19acb18b)
 
