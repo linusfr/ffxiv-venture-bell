@@ -1,10 +1,10 @@
-## 2.7.2 (2026-09-26)
+## 2.8.0 (2026-09-26)
 
-#### Bug Fixes
+#### Feature
 
-* add a favicon to the webpage (a94e86e8)
+* **server:** let the page notify, and reuse its bell for the plugin (41f79b7c)
 
 #### Chores
 
-* pluginmaster 2.7.1 [skip ci] (0cc427fd)
+* pluginmaster 2.7.2 [skip ci] (7a666cf0)
 
