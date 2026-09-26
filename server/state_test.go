@@ -198,3 +198,34 @@ func TestComposeStartedNamesWhenTheyAreBack(t *testing.T) {
 		t.Errorf("message = %q, want it to lead with Sultana back at %s", message, want)
 	}
 }
+
+func TestRecallingAVentureDropsItsPendingNotification(t *testing.T) {
+	s := NewState()
+
+	// Out on a long one, known while pending.
+	s.merge("Y'shtola@Phoenix", []Retainer{
+		{Name: "Sultana", Venture: "Field Exploration IX", DoneAt: at(18 * time.Hour)},
+	}, nil, base)
+
+	// Recalled and sent on something shorter. The old completion time is not a
+	// thing the server still holds an opinion about.
+	s.merge("Y'shtola@Phoenix", []Retainer{
+		{Name: "Sultana", Venture: "Quick Exploration", DoneAt: at(time.Hour)},
+	}, nil, base)
+
+	next, ok := s.nextAt(0)
+	if !ok || !next.Equal(time.Unix(at(time.Hour), 0)) {
+		t.Fatalf("the scheduler is still waiting on %v, want the new venture", next)
+	}
+
+	// And the far-future one never comes due afterwards.
+	if got := s.due(base.Add(19*time.Hour), 0, time.Minute, 24*time.Hour); len(got) != 1 {
+		t.Fatalf("want only the venture it is actually on, got %+v", got)
+	}
+
+	// Recalled to nothing: idle schedules nothing at all.
+	s.merge("Y'shtola@Phoenix", []Retainer{{Name: "Sultana"}}, nil, base)
+	if _, ok := s.nextAt(0); ok {
+		t.Error("an idle retainer still has a notification waiting for it")
+	}
+}

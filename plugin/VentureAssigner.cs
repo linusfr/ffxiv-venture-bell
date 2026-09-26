@@ -171,9 +171,14 @@ internal sealed class VentureAssigner : IDisposable
                 break;
 
             case "RetainerTaskResult":
-                // Collect and close, rather than the reassign button beside it:
-                // the point is to choose what comes next.
-                Click(args.AddonName, 1, $"{_retainer}: closing the venture report");
+                // Ignores callbacks like the other two, so the click is the
+                // event a mouse makes. Its values run [1] Reassign, [2] Confirm
+                // and the parameter follows them: 2 collects and closes, which
+                // is the one that leaves the retainer free to be sent out on
+                // something chosen rather than repeated.
+                Say($"{_retainer}: closing the venture report");
+                _framework.RunOnTick(() => SendEvent(args.AddonName, AtkEventType.ButtonClick, 2),
+                                     TimeSpan.FromMilliseconds(200));
                 break;
 
             case "RetainerTaskList":
