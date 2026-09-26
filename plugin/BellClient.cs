@@ -92,6 +92,10 @@ internal sealed class BellClient : IDisposable
             using var response = await _http.SendAsync(request, ct).ConfigureAwait(false);
             if (response.IsSuccessStatusCode)
                 return null;
+            if (FallBack(response.StatusCode))
+                return await SendAsync(config, snapshot, ct).ConfigureAwait(false);
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                return Unauthorized();
 
             var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
             return $"{(int)response.StatusCode} {response.ReasonPhrase}: {Shorten(body)}";
@@ -133,9 +137,11 @@ internal sealed class BellClient : IDisposable
             using var response = await _http.SendAsync(request, ct).ConfigureAwait(false);
             if (response.IsSuccessStatusCode)
                 return null;
+            if (FallBack(response.StatusCode))
+                return await TestAsync(config, character, ct).ConfigureAwait(false);
 
-            // A server that has never heard of /test is an old one, and its 404
-            // says "page not found" rather than anything useful.
+            // Still a 404 on the bare path: a server that has never heard of
+            // /test at all, which means one older than 2.1.0.
             if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
                 return "this server has no test endpoint — it predates 2.1.0.";
 
@@ -170,8 +176,10 @@ internal sealed class BellClient : IDisposable
             using var response = await _http.SendAsync(request, ct).ConfigureAwait(false);
             if (response.IsSuccessStatusCode)
                 return null;
+            if (FallBack(response.StatusCode))
+                return await CheckAsync(config, ct).ConfigureAwait(false);
             if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
-                return "the server rejected the token.";
+                return Unauthorized();
 
             return $"{(int)response.StatusCode} {response.ReasonPhrase}";
         }
@@ -185,10 +193,35 @@ internal sealed class BellClient : IDisposable
         }
     }
 
-    private static bool TryBuildUrl(string baseUrl, string path, out Uri url)
+    private static string Unauthorized() => "the server rejected the token.";
+
+    // Every endpoint answers under /api as well, which is the half a proxy
+    // leaves open when the page behind it needs a login. /api first because any
+    // server new enough to have a page has it; a 404 means an older one, and
+    // then the bare paths are the only ones there.
+    private string _prefix = "/api";
+
+    /// <summary>
+    /// Switches to the other set of paths and says whether that is worth
+    /// retrying — once, so a genuinely missing endpoint still surfaces.
+    /// </summary>
+    private bool FallBack(System.Net.HttpStatusCode status)
+    {
+        if (status != System.Net.HttpStatusCode.NotFound || _prefix.Length == 0)
+            return false;
+
+        _prefix = "";
+        return true;
+    }
+
+    private bool TryBuildUrl(string baseUrl, string path, out Uri url)
     {
         url = null!;
-        if (!Uri.TryCreate(baseUrl.TrimEnd('/') + "/" + path, UriKind.Absolute, out var parsed))
+        var address = baseUrl.TrimEnd('/');
+
+        // Someone who wrote the prefix in themselves is not contradicted.
+        var prefix = address.EndsWith("/api", StringComparison.OrdinalIgnoreCase) ? "" : _prefix;
+        if (!Uri.TryCreate(address + prefix + "/" + path, UriKind.Absolute, out var parsed))
             return false;
         if (parsed.Scheme != Uri.UriSchemeHttp && parsed.Scheme != Uri.UriSchemeHttps)
             return false;
