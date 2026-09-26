@@ -1,10 +1,10 @@
-## 2.7.1 (2026-09-26)
+## 2.7.2 (2026-09-26)
 
 #### Bug Fixes
 
-* **plugin:** do not sync before the world is known (5e851a8a)
+* add a favicon to the webpage (a94e86e8)
 
 #### Chores
 
-* pluginmaster 2.7.0 [skip ci] (19acb18b)
+* pluginmaster 2.7.1 [skip ci] (0cc427fd)
 
