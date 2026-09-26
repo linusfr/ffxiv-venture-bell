@@ -1,10 +1,10 @@
-## 2.8.2 (2026-09-26)
+## 2.8.3 (2026-09-26)
 
 #### Bug Fixes
 
-* **plugin:** talk to /api (d9c1c44b)
+* **plugin:** collect the venture report without help (184279fe)
 
 #### Chores
 
-* pluginmaster 2.8.1 [skip ci] (65298d2b)
+* pluginmaster 2.8.2 [skip ci] (ade69484)
 
