@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Venture Bell</title>
+<style>
+  /* Warm neutrals, biased toward the brass the game's own retainer UI is made
+     of; the accent is that brass, and "back" is a separate semantic green so
+     state never borrows the accent. */
+  :root {
+    color-scheme: light dark;
+    --ground: #faf7f2;
+    --panel: #fffdfa;
+    --line: #e7e0d4;
+    --line-soft: #f0ebe1;
+    --ink: #24211c;
+    --muted: #7c7466;
+    --faint: #a49a89;
+    --accent: #b8892d;
+    --ready: #3f7d52;
+    --ready-bg: #e8f1e9;
+    --shadow: 0 1px 2px rgba(36, 33, 28, .06), 0 8px 24px -16px rgba(36, 33, 28, .28);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #17150f;
+      --panel: #201d16;
+      --line: #322d22;
+      --line-soft: #292419;
+      --ink: #efebe1;
+      --muted: #9b9282;
+      --faint: #6f6757;
+      --accent: #e0b869;
+      --ready: #79c98e;
+      --ready-bg: #1e2d22;
+      --shadow: none;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding-block: 32px 56px;
+    padding-inline: 16px;
+  }
+  main { max-width: 640px; margin-inline: auto; }
+
+  /* Header: the answer first, the detail after. */
+  .masthead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 12px; }
+  h1 {
+    margin: 0; font-size: 19px; font-weight: 620; letter-spacing: -.01em;
+  }
+  h1 .bell { color: var(--accent); }
+  .asof { color: var(--faint); font-size: 12.5px; margin-left: auto; font-variant-numeric: tabular-nums; }
+
+  .summary {
+    margin-top: 14px; padding: 14px 16px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    box-shadow: var(--shadow);
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px;
+  }
+  .summary .lede { font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+  .summary .lede.ready { color: var(--ready); }
+  .summary .detail { color: var(--muted); font-size: 13.5px; }
+
+  .filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 20px 0 12px; }
+  .chip {
+    font: inherit; font-size: 12.5px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--panel); color: var(--muted);
+    border-radius: 999px; padding: 4px 11px;
+  }
+  .chip[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+  .chip:hover { color: var(--ink); }
+  .chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  section {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    box-shadow: var(--shadow); margin-bottom: 12px; overflow: hidden;
+  }
+  .character {
+    display: flex; align-items: baseline; gap: 8px;
+    padding: 11px 16px; border-bottom: 1px solid var(--line-soft);
+  }
+  .character h2 { font-size: 13px; font-weight: 600; margin: 0; }
+  .character .world { color: var(--faint); font-size: 12px; }
+  .character .tally { margin-left: auto; color: var(--faint); font-size: 12px; }
+
+  .rows { list-style: none; margin: 0; padding: 0; }
+  .row { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; padding: 10px 16px; }
+  .row + .row { border-top: 1px solid var(--line-soft); }
+  .who { font-weight: 550; }
+  .what { grid-column: 1; color: var(--muted); font-size: 12.5px; }
+  .when {
+    grid-row: 1 / span 2; grid-column: 2; align-self: center; text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .when .left { display: block; font-size: 15px; }
+  .when .clock { display: block; color: var(--faint); font-size: 12px; }
+  .row.back .who, .row.back .when .left { color: var(--ready); }
+  .row.back .when .left { font-weight: 600; }
+  .row.idle .who, .row.idle .what { color: var(--faint); }
+
+  .pill {
+    display: inline-block; font-size: 11px; letter-spacing: .04em; text-transform: uppercase;
+    padding: 1px 7px; border-radius: 999px; background: var(--ready-bg); color: var(--ready);
+    vertical-align: 1px; margin-left: 6px;
+  }
+
+  .note { color: var(--muted); padding: 18px 16px; font-size: 14px; }
+  .note.bad { color: #b4503f; }
+  @media (prefers-color-scheme: dark) { .note.bad { color: #e08a7a; } }
+
+  .gate { padding: 18px 16px; }
+  .gate p { margin: 0 0 12px; color: var(--muted); font-size: 13.5px; }
+  .gate form { display: flex; flex-wrap: wrap; gap: 8px; }
+  .gate input, .gate button {
+    font: inherit; font-size: 14px; padding: 8px 11px; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--ground); color: var(--ink);
+  }
+  .gate input { flex: 1 1 220px; min-width: 0; }
+  .gate button { border-color: var(--accent); color: var(--accent); cursor: pointer; font-weight: 550; }
+  .gate button:hover { background: var(--accent); color: var(--panel); }
+  .gate :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  footer {
+    margin-top: 22px; text-align: center;
+    color: var(--faint); font-size: 12px;
+  }
+</style>
+</head>
+<body>
+<main>
+  <div class="masthead">
+    <h1><span class="bell">Venture</span> Bell</h1>
+    <span class="asof" id="asof"></span>
+  </div>
+
+  <div class="summary" id="summary" hidden></div>
+  <div class="filters" id="filters"></div>
+  <div id="content"><p class="note">Reading the timers…</p></div>
+
+  <footer>Read only — retainers are sent out in game.</footer>
+</main>
+
+<script>
+const HIDDEN = "venture-bell.hidden";
+const TOKEN  = "venture-bell.token";
+
+let state = { characters: {} };
+let hidden = new Set(read(HIDDEN, []));
+
+function read(key, fallback) {
+  try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
+}
+function write(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* private window */ }
+}
+
+const now = () => Date.now() / 1000;
+
+/** "17h38m", "42m", "<1m" — minutes, because a venture is hours away. */
+function left(seconds) {
+  const minutes = Math.floor(seconds / 60);
+  if (minutes >= 60) return `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, "0")}m`;
+  return minutes >= 1 ? `${minutes}m` : "<1m";
+}
+
+/** The clock time, and which day it lands on — the part "17h38m" cannot tell you. */
+function clock(doneAt) {
+  const when = new Date(doneAt * 1000);
+  const time = when.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const days = Math.round((when.setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)) / 86400000);
+  if (days === 0) return time;
+  if (days === 1) return `${time} tomorrow`;
+  return `${time} ${new Date(doneAt * 1000).toLocaleDateString([], { weekday: "short" })}`;
+}
+
+function shownCharacters() {
+  return Object.keys(state.characters).filter(name => !hidden.has(name)).sort();
+}
+
+/** Retainers of the shown characters, soonest first, idle last. */
+function pending() {
+  const all = [];
+  for (const name of shownCharacters())
+    for (const r of state.characters[name].retainers || [])
+      if (r.done_at) all.push(r);
+  return all.sort((a, b) => a.done_at - b.done_at);
+}
+
+function drawSummary() {
+  const box = document.getElementById("summary");
+  const out = pending().filter(r => r.done_at > now());
+  const back = pending().filter(r => r.done_at <= now());
+
+  if (pending().length === 0) { box.hidden = true; return; }
+  box.hidden = false;
+
+  const lede = document.createElement("span");
+  lede.className = "lede";
+  const detail = document.createElement("span");
+  detail.className = "detail";
+
+  if (out.length === 0) {
+    lede.classList.add("ready");
+    lede.textContent = back.length === 1 ? "One retainer is back" : `All ${back.length} retainers are back`;
+    detail.textContent = "Nothing is out.";
+  } else {
+    const next = out[0];
+    lede.textContent = `Next back ${clock(next.done_at)}`;
+    const parts = [`${next.name}, ${left(next.done_at - now())} to go`];
+    if (back.length) parts.push(`${back.length} already back`);
+    detail.textContent = parts.join(" · ");
+  }
+
+  box.replaceChildren(lede, detail);
+}
+
+function drawFilters() {
+  const names = Object.keys(state.characters).sort();
+  const filters = document.getElementById("filters");
+
+  // One character needs no filter; the chips are for telling alts apart.
+  if (names.length < 2) { filters.replaceChildren(); return; }
+
+  filters.replaceChildren(...names.map(name => {
+    const chip = document.createElement("button");
+    chip.className = "chip";
+    chip.type = "button";
+    chip.textContent = name.split("@")[0];
+    chip.title = name;
+    chip.setAttribute("aria-pressed", String(!hidden.has(name)));
+    chip.onclick = () => {
+      hidden.has(name) ? hidden.delete(name) : hidden.add(name);
+      write(HIDDEN, [...hidden]);
+      draw();
+    };
+    return chip;
+  }));
+}
+
+function characterCard(name) {
+  const retainers = [...(state.characters[name].retainers || [])]
+    .sort((a, b) => (b.done_at ? 1 : 0) - (a.done_at ? 1 : 0) || a.done_at - b.done_at);
+  const out = retainers.filter(r => r.done_at > now()).length;
+  const [who, world] = name.split("@");
+
+  const header = document.createElement("div");
+  header.className = "character";
+  header.append(
+    Object.assign(document.createElement("h2"), { textContent: who }),
+    Object.assign(document.createElement("span"), { className: "world", textContent: world ? `@${world}` : "" }),
+    Object.assign(document.createElement("span"), {
+      className: "tally",
+      textContent: out ? `${out} of ${retainers.length} out` : "all in",
+    }),
+  );
+
+  const list = document.createElement("ul");
+  list.className = "rows";
+  for (const r of retainers) list.append(retainerRow(r));
+
+  const card = document.createElement("section");
+  card.append(header, list);
+  return card;
+}
+
+function retainerRow(r) {
+  const row = document.createElement("li");
+  const idle = !r.done_at;
+  const back = !idle && r.done_at <= now();
+  row.className = `row${idle ? " idle" : back ? " back" : ""}`;
+
+  const who = document.createElement("span");
+  who.className = "who";
+  who.textContent = r.name;
+  if (back) who.append(Object.assign(document.createElement("span"), { className: "pill", textContent: "back" }));
+
+  const what = document.createElement("span");
+  what.className = "what";
+  what.textContent = idle ? "no venture" : r.venture || "venture";
+
+  const when = document.createElement("span");
+  when.className = "when";
+  if (idle) {
+    // "no venture" on the left already says it; a second word opposite it is
+    // noise in the column the eye uses for times.
+  } else if (back) {
+    when.append(Object.assign(document.createElement("span"), { className: "clock", textContent: `since ${clock(r.done_at)}` }));
+  } else {
+    when.append(
+      Object.assign(document.createElement("span"), { className: "left", textContent: left(r.done_at - now()) }),
+      Object.assign(document.createElement("span"), { className: "clock", textContent: clock(r.done_at) }),
+    );
+  }
+
+  row.append(who, what, when);
+  return row;
+}
+
+function draw() {
+  drawFilters();
+  drawSummary();
+
+  const content = document.getElementById("content");
+  const names = Object.keys(state.characters);
+  const shown = shownCharacters();
+
+  if (names.length === 0) {
+    content.replaceChildren(note("No characters yet. Sync once from the plugin and they appear here."));
+    return;
+  }
+  if (shown.length === 0) {
+    content.replaceChildren(note("Every character is filtered out."));
+    return;
+  }
+
+  content.replaceChildren(...shown.map(characterCard));
+}
+
+function note(text, bad) {
+  const p = document.createElement("p");
+  p.className = bad ? "note bad" : "note";
+  p.textContent = text;
+  const box = document.createElement("section");
+  box.append(p);
+  return box;
+}
+
+function askForToken(message) {
+  const box = document.createElement("section");
+  const gate = document.createElement("div");
+  gate.className = "gate";
+
+  const form = document.createElement("form");
+  const input = document.createElement("input");
+  input.type = "password";
+  input.id = "token";
+  input.placeholder = "read-only token";
+  input.autocomplete = "current-password";
+  input.setAttribute("aria-label", "Read-only token");
+
+  const button = document.createElement("button");
+  button.type = "submit";
+  button.textContent = "Show the timers";
+
+  form.onsubmit = event => {
+    event.preventDefault();
+    write(TOKEN, input.value.trim());
+    load();
+  };
+
+  form.append(input, button);
+  gate.append(Object.assign(document.createElement("p"), { textContent: message }), form);
+  box.append(gate);
+  document.getElementById("content").replaceChildren(box);
+  document.getElementById("summary").hidden = true;
+  input.focus();
+}
+
+async function load() {
+  // Sent only when there is one: a server behind a login wants no token, and
+  // asking for one there would be a lock on an open door.
+  const token = read(TOKEN, "");
+  const headers = { "Accept": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  try {
+    const response = await fetch("/ui/state", { headers });
+    if (response.status === 401) {
+      write(TOKEN, "");
+      askForToken(token ? "That token was not accepted." : "This page needs its read-only token.");
+      return;
+    }
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+
+    state = await response.json();
+    document.getElementById("asof").textContent =
+      "read " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    draw();
+  } catch (err) {
+    document.getElementById("content").replaceChildren(
+      note(`Could not reach the server: ${err.message}`, true));
+  }
+}
+
+load();
+setInterval(load, 30000);   // fresh timers
+setInterval(draw, 20000);   // and the countdown between them
+</script>
+</body>
+</html>

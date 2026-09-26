@@ -76,6 +76,40 @@ The chart pulls the image of the same version. Rendering fails outright without
 a token; the rest is [`chart/values.yaml`](chart/values.yaml). GHCR publishes
 new packages private, so a first pull may need the visibility flipped.
 
+## The page
+
+`BELL_UI=1` serves a read-only page of everything the server knows: characters,
+what each retainer is on, and when it is back. Filter chips hide the characters
+you did not come to see, remembered per browser.
+
+![The web page](images/screenshots/web.png)
+
+It needs its own `BELL_UI_TOKEN` — deliberately not `BELL_TOKEN`, so reading the
+timers does not also let someone sync or send notifications, and the server
+refuses to start if you use the same string for both. The page asks for it once
+and keeps it in local storage.
+
+Behind Authelia, OIDC or a VPN, set `BELL_UI_TRUSTED=1` instead and it asks for
+nothing. Every endpoint is also served under `/api/…`, which stays bearer-only,
+so a proxy can put a login in front of the page by path:
+
+```caddyfile
+@venture-bell host venture-bell.example.com
+handle @venture-bell {
+	@api path /api/* /healthz
+	handle @api {
+		reverse_proxy venture-bell:8770
+	}
+	handle {
+		forward_auth authelia:9091 {
+			uri /api/authz/forward-auth
+			copy_headers Remote-User Remote-Groups Remote-Email Remote-Name
+		}
+		reverse_proxy venture-bell:8770
+	}
+}
+```
+
 ## Configuration
 
 | Variable | Default | |
@@ -90,6 +124,9 @@ new packages private, so a first pull may need the visibility flipped.
 | `BELL_NOTIFY_START` | unset | Any value also announces ventures as they are assigned, with the time they are back |
 | `TZ` | UTC | Zone for those times. The image carries its own tz database, so any IANA name works; the chart defaults to `Europe/Berlin` |
 | `BELL_WEBHOOK_URL` | — | Also POST each notification as JSON here. The operator's relay, with no notion of a recipient, so on a shared server it sees everyone's |
+| `BELL_UI` | unset | Serve the read-only page |
+| `BELL_UI_TOKEN` | — | The page's own token; must differ from `BELL_TOKEN` |
+| `BELL_UI_TRUSTED` | unset | The page needs no token: something in front authenticates |
 | `BELL_DEBUG` | unset | Debug logging |
 
 ## How it behaves
@@ -150,6 +187,9 @@ list. The settings window checks the connection whenever it opens, and every
 button reports under "Last action".
 
 ## API
+
+Every endpoint answers under `/api/…` as well, which is what the plugin should
+use on a server whose page sits behind a login.
 
 `POST /sync` replaces what the server knows about one character. `POST /test`
 sends one notification with the credentials in the body, stores nothing, and

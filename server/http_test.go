@@ -183,3 +183,93 @@ func post(t *testing.T, srv *httptest.Server, path, auth, body string) int {
 	defer resp.Body.Close()
 	return resp.StatusCode
 }
+
+func TestApiAliasesAreTheSameEndpoints(t *testing.T) {
+	b, _, _ := testBell(t, Config{Coalesce: time.Minute, Stale: time.Hour})
+	srv := httptest.NewServer(NewServer(b, Config{Token: "secret"}, slog.New(slog.DiscardHandler)))
+	defer srv.Close()
+
+	// The plugin can be pointed at either; a proxy tells them apart by path.
+	body := `{"character":"Y'shtola@Phoenix","retainers":[]}`
+	for _, path := range []string{"/sync", "/api/sync"} {
+		if code := post(t, srv, path, "Bearer secret", body); code != http.StatusNoContent {
+			t.Errorf("POST %s = %d, want 204", path, code)
+		}
+		if code := post(t, srv, path, "Bearer wrong", body); code != http.StatusUnauthorized {
+			t.Errorf("POST %s with a bad token = %d, want 401", path, code)
+		}
+	}
+}
+
+func TestUIIsOffUnlessAskedFor(t *testing.T) {
+	b, _, _ := testBell(t, Config{Coalesce: time.Minute, Stale: time.Hour})
+	srv := httptest.NewServer(NewServer(b, Config{Token: "secret"}, slog.New(slog.DiscardHandler)))
+	defer srv.Close()
+
+	for _, path := range []string{"/", "/ui/state"} {
+		resp, err := srv.Client().Get(srv.URL + path)
+		if err != nil {
+			t.Fatalf("GET %s: %v", path, err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("GET %s = %s with the page disabled, want 404", path, resp.Status)
+		}
+	}
+}
+
+func TestUIStateNeedsTheTokenUnlessSomethingElseGuardsIt(t *testing.T) {
+	b, _, _ := testBell(t, Config{Coalesce: time.Minute, Stale: time.Hour})
+
+	guarded := httptest.NewServer(NewServer(b,
+		Config{Token: "secret", UI: UIConfig{Enabled: true, Token: "read-only"}}, slog.New(slog.DiscardHandler)))
+	defer guarded.Close()
+
+	resp, err := guarded.Client().Get(guarded.URL + "/ui/state")
+	if err != nil {
+		t.Fatalf("GET /ui/state: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("GET /ui/state = %s, want 401 without a token", resp.Status)
+	}
+
+	// The page's own token works; the plugin's is not a way in.
+	for token, want := range map[string]int{"read-only": http.StatusOK, "secret": http.StatusUnauthorized} {
+		req, _ := http.NewRequest(http.MethodGet, guarded.URL+"/ui/state", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		got, err := guarded.Client().Do(req)
+		if err != nil {
+			t.Fatalf("GET /ui/state: %v", err)
+		}
+		got.Body.Close()
+		if got.StatusCode != want {
+			t.Errorf("GET /ui/state with %q = %s, want %d", token, got.Status, want)
+		}
+	}
+
+	// Trusted: something in front is doing the authenticating, so the page's
+	// own data is served without a token of its own.
+	trusted := httptest.NewServer(NewServer(b,
+		Config{Token: "secret", UI: UIConfig{Enabled: true, Trusted: true}}, slog.New(slog.DiscardHandler)))
+	defer trusted.Close()
+
+	resp, err = trusted.Client().Get(trusted.URL + "/ui/state")
+	if err != nil {
+		t.Fatalf("GET /ui/state: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("GET /ui/state = %s behind a proxy, want 200", resp.Status)
+	}
+
+	// The page itself carries no secrets and is served either way.
+	page, err := trusted.Client().Get(trusted.URL + "/")
+	if err != nil {
+		t.Fatalf("GET /: %v", err)
+	}
+	defer page.Body.Close()
+	if page.StatusCode != http.StatusOK {
+		t.Errorf("GET / = %s, want the page", page.Status)
+	}
+}

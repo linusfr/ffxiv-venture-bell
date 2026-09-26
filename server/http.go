@@ -31,7 +31,7 @@ func NewServer(b *Bell, cfg Config, log *slog.Logger) http.Handler {
 		fmt.Fprintln(w, "ok")
 	})
 
-	mux.Handle("POST /sync", authed(cfg.Token, func(w http.ResponseWriter, r *http.Request) {
+	sync := authed(cfg.Token, func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, maxBody)
 
 		var req SyncRequest
@@ -54,11 +54,11 @@ func NewServer(b *Bell, cfg Config, log *slog.Logger) http.Handler {
 
 		log.Info("synced", "character", req.Character, "retainers", len(req.Retainers))
 		w.WriteHeader(http.StatusNoContent)
-	}))
+	})
 
 	// One real notification with the credentials in the body — the only way to
 	// catch a mistyped key before a venture is due.
-	mux.Handle("POST /test", authed(cfg.Token, func(w http.ResponseWriter, r *http.Request) {
+	test := authed(cfg.Token, func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, maxBody)
 
 		var req SyncRequest
@@ -87,18 +87,30 @@ func NewServer(b *Bell, cfg Config, log *slog.Logger) http.Handler {
 
 		log.Info("test notification sent")
 		w.WriteHeader(http.StatusNoContent)
-	}))
+	})
 
 	// For looking at with curl when a notification does not turn up.
-	mux.Handle("GET /state", authed(cfg.Token, func(w http.ResponseWriter, r *http.Request) {
-		state := b.Snapshot()
+	state := authed(cfg.Token, func(w http.ResponseWriter, r *http.Request) {
+		snapshot := b.Snapshot()
 		w.Header().Set("Content-Type", "application/json")
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
-		if err := enc.Encode(state); err != nil {
+		if err := enc.Encode(snapshot); err != nil {
 			log.Error("could not write state", "err", err)
 		}
-	}))
+	})
+
+	// Both spellings of each: /api/* is the plugin's, and stays bearer-only, so
+	// a proxy can put a login in front of everything else by path alone.
+	for path, handler := range map[string]http.Handler{
+		"POST /sync": sync, "POST /api/sync": sync,
+		"POST /test": test, "POST /api/test": test,
+		"GET /state": state, "GET /api/state": state,
+	} {
+		mux.Handle(path, handler)
+	}
+
+	mountUI(mux, b, cfg, log)
 
 	return mux
 }

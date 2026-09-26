@@ -22,6 +22,7 @@ type Config struct {
 
 	Pushover   PushoverConfig
 	WebhookURL string
+	UI         UIConfig
 }
 
 // PushoverConfig holds no credentials: both halves come from the plugin, so
@@ -38,6 +39,11 @@ func LoadConfig() (Config, error) {
 		StatePath:   env("BELL_STATE", "state.json"),
 		WebhookURL:  os.Getenv("BELL_WEBHOOK_URL"),
 		NotifyStart: os.Getenv("BELL_NOTIFY_START") != "",
+		UI: UIConfig{
+			Enabled: os.Getenv("BELL_UI") != "",
+			Token:   os.Getenv("BELL_UI_TOKEN"),
+			Trusted: os.Getenv("BELL_UI_TRUSTED") != "",
+		},
 	}
 
 	var err error
@@ -52,6 +58,17 @@ func LoadConfig() (Config, error) {
 	}
 	if c.Pushover.Priority, err = envInt("PUSHOVER_PRIORITY", -1); err != nil {
 		return c, err
+	}
+
+	// The page is read-only, but "read-only" still means every character's
+	// retainers, so it needs a guard of one kind or the other.
+	if c.UI.Enabled && !c.UI.Trusted && c.UI.Token == "" {
+		return c, fmt.Errorf("BELL_UI needs either BELL_UI_TOKEN, or BELL_UI_TRUSTED=1 when something " +
+			"in front of it (OIDC, a VPN) does the authenticating")
+	}
+	if c.UI.Token != "" && c.UI.Token == c.Token {
+		return c, fmt.Errorf("BELL_UI_TOKEN must differ from BELL_TOKEN: reading the timers should not " +
+			"also let someone sync or send notifications")
 	}
 
 	// Not optional even on localhost: what the plugin can reach, so can
