@@ -1,10 +1,10 @@
-## 2.8.1 (2026-09-26)
+## 2.8.2 (2026-09-26)
 
 #### Bug Fixes
 
-* **plugin:** find the right paths instead of being told (c625b93f)
+* **plugin:** talk to /api (d9c1c44b)
 
 #### Chores
 
-* pluginmaster 2.8.0 [skip ci] (84a4de8e)
+* pluginmaster 2.8.1 [skip ci] (65298d2b)
 
