@@ -51,6 +51,10 @@ public sealed class Configuration : IPluginConfiguration
     /// offer means the gear is behind the level and you may want to fix that.
     public bool TakeHighestQualified { get; set; } = true;
 
+    /// Narrate every menu the assigner clicks. Off: one line per retainer when
+    /// it is done, and anything that went wrong.
+    public bool VerboseChat { get; set; }
+
     /// Show the buttons above the summoning bell's retainer list.
     public bool ShowRetainerBar { get; set; } = true;
 

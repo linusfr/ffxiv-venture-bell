@@ -177,6 +177,8 @@ public sealed class ConfigurationWindow : IDisposable
         Section("Settings");
         Toggle("Buttons above the retainer list at a bell", Config.ShowRetainerBar,
                v => Config.ShowRetainerBar = v);
+        Toggle("Narrate every menu in chat", Config.VerboseChat, v => Config.VerboseChat = v);
+        ImGui.TextDisabled("  Off: one line per retainer when it is sent out, and anything that stopped.");
         Toggle("Take the highest exploration the retainer qualifies for", Config.TakeHighestQualified,
                v => Config.TakeHighestQualified = v);
         ImGui.TextDisabled(Config.TakeHighestQualified

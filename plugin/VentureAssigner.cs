@@ -135,9 +135,10 @@ internal sealed class VentureAssigner : IDisposable
     {
         _live            = live;
         _queue[retainer] = new Queued(venture, collect);
-        _report(live
-            ? $"{retainer}: {venture.Name} queued{(collect ? ", report to collect first" : "")}."
-            : $"Dry run armed for {retainer}: {venture.Name}. Walk the menus and watch the log.");
+        if (live)
+            Say($"{retainer}: {venture.Name} queued{(collect ? ", report to collect first" : "")}");
+        else
+            _report($"Dry run armed for {retainer}: {venture.Name}. Walk the menus and watch the log.");
 
         if (live)
             _framework.RunOnTick(OpenNext, TimeSpan.FromMilliseconds(100));
@@ -209,29 +210,40 @@ internal sealed class VentureAssigner : IDisposable
         var agent   = AgentRetainerTask.Instance();
         var onOffer = agent is null ? 0 : agent->RetainerTaskId;
 
-        // Button 1 assigns, 0 backs out: the report window's own labels run
-        // "Reassign" then "Confirm", and this dialog is the same way round.
+        // Like the venture list and the rewards page, this dialog answers to
+        // events rather than callbacks. Its buttons run assign then return, and
+        // the parameter follows them.
         if (onOffer == _wanted.Value.TaskId)
         {
-            Say($"{_retainer}: {_wanted.Value.Name} confirmed");
-            _framework.RunOnTick(() => SendEvent(addon, AtkEventType.ButtonClick, 1),
-                                 TimeSpan.FromMilliseconds(200));
+            Report($"{_retainer}: sent on {_wanted.Value.Name}");
+            Press(addon, AssignButton);
         }
-        else if (!_config.TakeHighestQualified)
+        else if (_config.TakeHighestQualified)
+        {
+            Report($"{_retainer}: {_wanted.Value.Name} out of reach, sent on {Name(onOffer)} instead");
+            Press(addon, AssignButton);
+        }
+        else
         {
             // The game only lists what a retainer qualifies for, so something
             // lesser on offer means the gear is behind the level.
             var needs = _wanted.Value.RequiredItemLevel > 0 ? $" (needs i{_wanted.Value.RequiredItemLevel})" : "";
-            Click(addon, 0, $"{_retainer} cannot take {_wanted.Value.Name}{needs} — the list offered " +
-                            $"{Name(onOffer)}. Stopping; check the gear.");
-        }
-        else
-        {
-            Click(addon, 0, $"{_retainer}: {_wanted.Value.Name} unavailable, taking {Name(onOffer)} instead");
+            Report($"{_retainer} cannot take {_wanted.Value.Name}{needs} — {Name(onOffer)} was offered. " +
+                   "Stopped; check the gear.");
+            Press(addon, ReturnButton);
         }
 
         Drop();
     }
+
+    // The confirmation's buttons, in the order it lists them.
+    private const int AssignButton = 1;
+    private const int ReturnButton = 2;
+
+    /// <summary>Presses a button once the window has finished appearing.</summary>
+    private void Press(string addon, int button) =>
+        _framework.RunOnTick(() => SendEvent(addon, AtkEventType.ButtonClick, button),
+                             TimeSpan.FromMilliseconds(200));
 
     private DateTime _advancedAt = DateTime.MinValue;
     private DateTime _openedAt   = DateTime.MinValue;
@@ -438,7 +450,8 @@ internal sealed class VentureAssigner : IDisposable
                 : -1;
             if (collect < 0)
             {
-                Say($"{_retainer}: no venture report entry — stopping. Entries: {string.Join(" | ", entries)}");
+                Report($"{_retainer}: no venture report to collect — stopped.");
+                Say($"entries were {string.Join(" | ", entries)}");
                 Drop();
                 return;
             }
@@ -462,7 +475,8 @@ internal sealed class VentureAssigner : IDisposable
         index = entries.FindIndex(e => e.TrimEnd('.') == family);
         if (index < 0)
         {
-            Say($"category menu: no entry matches \"{family}\" — entries were {string.Join(" | ", entries)}");
+            Report($"{_retainer}: no venture category matches {family} — stopped.");
+            Say($"entries were {string.Join(" | ", entries)}");
             Drop();
             return;
         }
@@ -621,11 +635,28 @@ internal sealed class VentureAssigner : IDisposable
         return found;
     }
 
+    /// <summary>
+    /// A step along the way: always logged, said aloud only when asked for.
+    /// Eight lines per retainer is a transcript, not a report.
+    /// </summary>
     private void Say(string line)
+    {
+        if (_config.VerboseChat)
+            _report(line);
+        Record(line);
+    }
+
+    /// <summary>What came of it, or what stopped it. Always said.</summary>
+    private void Report(string line)
+    {
+        _report(line);
+        Record(line);
+    }
+
+    private void Record(string line)
     {
         _busyUntil = DateTime.UtcNow.AddSeconds(5);
         _log.Information("VentureBell/assign " + line);
-        _report(line);
 
         try
         {
