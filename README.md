@@ -1,9 +1,12 @@
-# Venture Bell
-
-[![ci](https://img.shields.io/github/actions/workflow/status/linusfr/ffxiv-venture-bell/ci.yml?branch=main&label=ci&cacheSeconds=300)](https://github.com/linusfr/ffxiv-venture-bell/actions/workflows/ci.yml)
-[![licence](https://img.shields.io/github/license/linusfr/ffxiv-venture-bell?color=blue)](LICENSE)
-
-> Your retainers come back whether the game is open or not.
+<div align="center">
+	<img src="images/icon.png" alt="Venture Bell icon" width="128">
+	<h1>Venture Bell</h1>
+	<p>Your retainers come back whether the game is open or not.</p>
+	<p>
+		<a href="https://github.com/linusfr/ffxiv-venture-bell/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/linusfr/ffxiv-venture-bell/ci.yml?branch=main&amp;label=ci&amp;cacheSeconds=300" alt="CI status"></a>
+		<a href="LICENSE"><img src="https://img.shields.io/github/license/linusfr/ffxiv-venture-bell?color=blue" alt="MIT license"></a>
+	</p>
+</div>
 
 A venture timer is only useful while you are logged in, which is the one time you
 do not need it. The plugin sends the completion times to a small server; the
@@ -36,11 +39,14 @@ same version, so there is no compatibility matrix.
 
 ## Install
 
-Add to Dalamud's custom plugin repositories (`/xlsettings` → Experimental):
+In `/xlsettings`, open **Experimental** > **Custom Plugin Repositories**, paste
+this URL, click `+`, then save:
 
 ```text
 https://raw.githubusercontent.com/linusfr/ffxiv-venture-bell/main/pluginmaster.json
 ```
+
+Then open `/xlplugins`, search for **Venture Bell**, and select **Install**.
 
 The two halves are independent, one settings tab each. **On-screen list** reads
 the game and needs nothing else — no server, no account — so if that is all you
@@ -227,4 +233,6 @@ just install      # the plugin into ~/.xlcore/devPlugins for /xlplugins dev mode
 just check        # everything CI runs
 ```
 
-MIT. Not affiliated with Square Enix.
+## License
+
+MIT, see [`LICENSE`](LICENSE). Not affiliated with Square Enix.
