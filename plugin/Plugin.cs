@@ -225,7 +225,14 @@ public sealed class Plugin : IDalamudPlugin
 
     private void OnDraw()
     {
+        // Settings stay reachable from the plugin installer wherever you are.
         _configWindow.Draw();
+
+        // The timers belong to a character, and the list would otherwise sit
+        // over the character selection screen.
+        if (!PlayerState.IsLoaded)
+            return;
+
         _ventureWindow.Draw();
         _bar.Draw();
     }
