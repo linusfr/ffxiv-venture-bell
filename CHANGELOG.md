@@ -1,10 +1,11 @@
-## 2.9.0 (2026-09-27)
+## 2.9.1 (2026-10-03)
 
-#### Feature
+#### Bug Fixes
 
-* **plugin:** one line per retainer instead of a transcript (2ccaa8dc)
+* keep the venture list off the character selection screen (0a697d47)
 
 #### Chores
 
-* pluginmaster 2.8.3 [skip ci] (a38e8e23)
+* align (d3142aa1)
+* pluginmaster 2.9.0 [skip ci] (038ae808)
 
