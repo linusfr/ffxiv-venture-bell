@@ -7,6 +7,7 @@ using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using Dalamud.Plugin.Services;
 
+using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.UI;
 
 using FFXIVClientStructs.FFXIV.Client.UI.Agent;
@@ -84,6 +85,7 @@ internal sealed class VentureAssigner : IDisposable
 
     private VentureOption? _wanted;
     private string         _retainer = "";
+    private int            _row;
     private bool           _live;
 
     internal VentureAssigner(Configuration config, IAddonLifecycle addons, IDataManager data,
@@ -185,10 +187,10 @@ internal sealed class VentureAssigner : IDisposable
             case "RetainerTaskList":
                 // No callback reaches this list — its rows are chosen through
                 // the component's own selection state, so the click is
-                // synthesised. Row 0: the list is already filtered to what this
-                // retainer can take, and the agent check at the confirm catches
-                // it if that ever stops being true.
-                _framework.RunOnTick(() => SelectRow(0), TimeSpan.FromMilliseconds(250));
+                // synthesised. The list is filtered by level but not by gear and
+                // runs highest first, so row 0 is tried and the confirm steps
+                // down from there.
+                _framework.RunOnTick(() => SelectRow(_row), TimeSpan.FromMilliseconds(250));
                 Say($"{_retainer}: taking the top of the list for {_wanted!.Value.Name}");
                 break;
 
@@ -210,31 +212,96 @@ internal sealed class VentureAssigner : IDisposable
         var agent   = AgentRetainerTask.Instance();
         var onOffer = agent is null ? 0 : agent->RetainerTaskId;
 
+        // The list offers whatever the level allows, gear or not, and the game
+        // only refuses an item level it does not meet once Assign is pressed.
+        var needs = RequiredItemLevel(onOffer);
+        var has   = RetainerItemLevel();
+        var fits  = has is null || has >= needs;
+        var gear  = has is null ? "gear unread" : $"has i{has}";
+
         // Like the venture list and the rewards page, this dialog answers to
         // events rather than callbacks. Its buttons run assign then return, and
         // the parameter follows them.
-        if (onOffer == _wanted.Value.TaskId)
+        if (fits && onOffer == _wanted.Value.TaskId)
         {
             Report($"{_retainer}: sent on {_wanted.Value.Name}");
             Press(addon, AssignButton);
         }
-        else if (_config.TakeHighestQualified)
+        else if (fits && _config.TakeHighestQualified)
         {
-            Report($"{_retainer}: {_wanted.Value.Name} out of reach, sent on {Name(onOffer)} instead");
+            Report($"{_retainer}: {_wanted.Value.Name} out of reach ({gear}), sent on {Name(onOffer)} instead");
             Press(addon, AssignButton);
+        }
+        else if (!fits && _config.TakeHighestQualified && _row < MaxRow)
+        {
+            // Back to the list, which stays open behind the dialog, and the next
+            // row down.
+            Say($"{_retainer}: {Name(onOffer)} needs i{needs}, {gear} — trying the next one down");
+            Press(addon, ReturnButton);
+            _row++;
+            _framework.RunOnTick(() => SelectRow(_row), TimeSpan.FromMilliseconds(600));
+            return;
         }
         else
         {
-            // The game only lists what a retainer qualifies for, so something
-            // lesser on offer means the gear is behind the level.
-            var needs = _wanted.Value.RequiredItemLevel > 0 ? $" (needs i{_wanted.Value.RequiredItemLevel})" : "";
-            Report($"{_retainer} cannot take {_wanted.Value.Name}{needs} — {Name(onOffer)} was offered. " +
-                   "Stopped; check the gear.");
+            Report($"{_retainer} cannot take {_wanted.Value.Name} (needs i{_wanted.Value.RequiredItemLevel}, " +
+                   $"{gear}) — {Name(onOffer)} was offered. Stopped; check the gear.");
             Press(addon, ReturnButton);
         }
 
         Drop();
     }
+
+    // Further down than any venture family runs: past this the list is not
+    // behaving as expected and stepping on would only stall.
+    private const int MaxRow = 30;
+
+    private int RequiredItemLevel(uint taskId)
+        => _data.GetExcelSheet<Lumina.Excel.Sheets.RetainerTask>()?.GetRowOrDefault(taskId)?.RequiredItemLevel ?? 0;
+
+    /// <summary>
+    /// The average item level the game holds the retainer to, from the gear it
+    /// has on — loaded once its menu has been opened. Null when it is not, so
+    /// the game is left to judge.
+    /// </summary>
+    private unsafe int? RetainerItemLevel()
+    {
+        var manager = InventoryManager.Instance();
+        var gear    = manager is null ? null : manager->GetInventoryContainer(InventoryType.RetainerEquippedItems);
+        if (gear is null || !gear->IsLoaded)
+            return null;
+
+        var items = _data.GetExcelSheet<Lumina.Excel.Sheets.Item>();
+        if (items is null)
+            return null;
+
+        // Twelve slots count: main hand, off hand, the five armour pieces and
+        // the five accessories. The belt slot is gone and the soul crystal never
+        // counted. A two-handed weapon fills the off hand's share too.
+        var total = 0;
+        for (var slot = 0; slot < gear->Size && slot < 13; slot++)
+        {
+            if (slot == BeltSlot)
+                continue;
+
+            var id = gear->Items[slot].GetItemId();
+            if (id == 0)
+                continue;
+
+            var item = items.GetRowOrDefault(id);
+            if (item is null)
+                continue;
+
+            var level = (int)item.Value.LevelItem.RowId;
+            total += level;
+            if (slot == 0 && item.Value.EquipSlotCategory.ValueNullable?.OffHand == -1)
+                total += level;
+        }
+
+        return total / 12;
+    }
+
+    private const int BeltSlot = 5;
 
     // The confirmation's buttons, in the order it lists them.
     private const int AssignButton = 1;
@@ -404,7 +471,8 @@ internal sealed class VentureAssigner : IDisposable
 
             _retainer = queued.Key;
             _wanted   = queued.Value.Venture;
-                break;
+            _row      = 0;
+            break;
         }
 
         if (_wanted is null)
