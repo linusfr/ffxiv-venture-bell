@@ -1,11 +1,10 @@
-## 2.9.1 (2026-10-03)
+## 2.9.2 (2026-10-08)
 
 #### Bug Fixes
 
-* keep the venture list off the character selection screen (0a697d47)
+* **plugin:** step down to a venture the retainer's gear qualifies for (8ac96e16)
 
 #### Chores
 
-* align (d3142aa1)
-* pluginmaster 2.9.0 [skip ci] (038ae808)
+* pluginmaster 2.9.1 [skip ci] (6abd8f8d)
 
